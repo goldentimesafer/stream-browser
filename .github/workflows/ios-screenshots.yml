@@ -1,0 +1,45 @@
+name: iPhone screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: macos-26-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Run the app and capture its screens
+        run: |
+          mkdir -p build
+          simulator=$(xcrun simctl list devices available --json | jq -er '
+            .devices | to_entries | map(select(.key | contains("SimRuntime.iOS-")))
+            | sort_by(.key | split("iOS-")[1] | split("-") | map(tonumber)) | reverse
+            | map(.value[] | select(.name == "iPhone 17")) | first | .udid
+          ')
+          xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
+            -sdk iphonesimulator -destination "platform=iOS Simulator,id=$simulator" \
+            -parallel-testing-enabled NO -resultBundlePath build/Screenshots.xcresult \
+            -only-testing:StreamBrowserUITests/ScreenCaptureTests CODE_SIGNING_ALLOWED=NO test
+      - name: Export screenshots as PNG files
+        run: |
+          mkdir -p build/screenshots
+          xcrun xcresulttool export attachments --path build/Screenshots.xcresult --output-path build/attachments
+          for name in 01-lock 02-browser 03-library 04-settings 05-download; do
+            file=$(jq -er --arg name "$name" '
+              [.[].attachments[] | select(.suggestedHumanReadableName | startswith($name))
+                | .exportedFileName | select(endswith(".png"))] | first
+            ' build/attachments/manifest.json)
+            cp "build/attachments/$file" "build/screenshots/$name.png"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamBrowser-screenshots
+          path: build/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 7

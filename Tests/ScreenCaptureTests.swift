@@ -1,0 +1,47 @@
+import XCTest
+
+final class ScreenCaptureTests: XCTestCase {
+    @MainActor
+    func testCaptureMainScreens() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-appLockEnabled", "YES"]
+        app.launch()
+        guard show(app.buttons["잠금 해제"]) else { return }
+        capture("01-lock", in: app)
+        app.terminate()
+
+        // Apply the existing preference only to this simulator launch.
+        app.launchArguments = ["-appLockEnabled", "NO"]
+        app.launch()
+        guard show(app.textFields["주소 또는 검색어"]) else { return }
+        capture("02-browser", in: app)
+
+        app.buttons["저장함"].tap()
+        guard show(app.staticTexts["저장한 영상이 없습니다."]) else { return }
+        capture("03-library", in: app)
+
+        app.buttons["설정"].tap()
+        guard show(app.switches["앱 잠금"]) else { return }
+        capture("04-settings", in: app)
+
+        app.buttons["탐색"].tap()
+        app.buttons["영상 저장"].tap()
+        guard show(app.navigationBars["영상 저장"]) else { return }
+        capture("05-download", in: app)
+    }
+
+    @MainActor
+    private func show(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) -> Bool {
+        let exists = element.waitForExistence(timeout: 15)
+        XCTAssertTrue(exists, "Expected screen element: \(element)", file: file, line: line)
+        return exists
+    }
+
+    @MainActor
+    private func capture(_ name: String, in app: XCUIApplication) {
+        let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        image.name = name
+        image.lifetime = .keepAlways
+        add(image)
+    }
+}
