@@ -24,22 +24,33 @@ jobs:
             | map(select(.name == "iPhone 16")) | first | .udid
           ')
           xcrun simctl boot "$simulator"
+          echo "SCREEN_SIMULATOR=$simulator" >> "$GITHUB_ENV"
           xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
             -sdk iphonesimulator -destination "platform=iOS Simulator,id=$simulator" \
+            ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES \
+            -derivedDataPath build/SimulatorBuild \
             -parallel-testing-enabled NO -resultBundlePath build/Screenshots.xcresult \
             -only-testing:StreamBrowserUITests/ScreenCaptureTests test
       - name: Export screenshots as PNG files
+        if: ${{ !cancelled() && hashFiles('build/Screenshots.xcresult/Info.plist') != '' }}
         run: |
           mkdir -p build/screenshots
           xcrun xcresulttool export attachments --path build/Screenshots.xcresult --output-path build/attachments
-          for name in 01-lock 02-browser 03-library 04-settings 05-download; do
-            file=$(jq -er --arg name "$name" '
+          missing=0
+          for name in 01-lock 02-browser 03-library 04-settings 05-download diagnostic-lock; do
+            if file=$(jq -er --arg name "$name" '
               [.[].attachments[] | select(.suggestedHumanReadableName | startswith($name))
                 | .exportedFileName | select(endswith(".png"))] | first
-            ' build/attachments/manifest.json)
-            cp "build/attachments/$file" "build/screenshots/$name.png"
+            ' build/attachments/manifest.json); then
+              cp "build/attachments/$file" "build/screenshots/$name.png"
+            elif [[ "$name" != diagnostic-lock ]]; then
+              echo "::error::Missing $name screenshot"
+              missing=1
+            fi
           done
+          exit "$missing"
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && hashFiles('build/screenshots/*.png') != '' }}
         with:
           name: StreamBrowser-screenshots
           path: build/screenshots/*.png

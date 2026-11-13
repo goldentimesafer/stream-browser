@@ -4,10 +4,14 @@ final class ScreenCaptureTests: XCTestCase {
     @MainActor
     func testCaptureMainScreens() {
         let app = XCUIApplication()
-        app.launchArguments = ["-appLockEnabled", "YES"]
         app.launch()
-        guard show(app.buttons["잠금 해제"]) else { return }
-        capture("01-lock", in: app)
+        let unlock = app.buttons["잠금 해제"]
+        if unlock.waitForExistence(timeout: 30) {
+            capture("01-lock", in: app)
+        } else {
+            capture("diagnostic-lock", in: app)
+            XCTFail("Unlock button missing. App state: \(app.state). \(app.debugDescription)")
+        }
         app.terminate()
 
         // Apply the existing preference only to this simulator launch.
@@ -39,7 +43,7 @@ final class ScreenCaptureTests: XCTestCase {
 
     @MainActor
     private func capture(_ name: String, in app: XCUIApplication) {
-        let image = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        let image = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         image.name = name
         image.lifetime = .keepAlways
         add(image)
