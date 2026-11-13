@@ -1,0 +1,67 @@
+// !$*UTF8*$!
+{
+  archiveVersion = 1;
+  classes = {};
+  objectVersion = 56;
+  objects = {
+/* Begin PBXBuildFile section */
+    000000000000000000000014 /* BrowserScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000013; };
+    000000000000000000000016 /* DownloadCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000015; };
+    000000000000000000000018 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000017; };
+    00000000000000000000001A /* MediaPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000019; };
+    00000000000000000000001C /* MediaStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001B; };
+    00000000000000000000001E /* PrivateBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001D; };
+    000000000000000000000020 /* PublicSourceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001F; };
+    000000000000000000000022 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000021; };
+    000000000000000000000024 /* StreamBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000023; };
+    000000000000000000000026 /* SystemTransfers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000025; };
+    000000000000000000000012 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000011; };
+/* End PBXBuildFile section */
+/* Begin PBXFileReference section */
+    000000000000000000000006 /* StreamBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = StreamBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
+    000000000000000000000013 /* BrowserScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserScreen.swift; sourceTree = "<group>"; };
+    000000000000000000000015 /* DownloadCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadCenter.swift; sourceTree = "<group>"; };
+    000000000000000000000017 /* LibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScreen.swift; sourceTree = "<group>"; };
+    000000000000000000000019 /* MediaPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaPolicy.swift; sourceTree = "<group>"; };
+    00000000000000000000001B /* MediaStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaStore.swift; sourceTree = "<group>"; };
+    00000000000000000000001D /* PrivateBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivateBrowser.swift; sourceTree = "<group>"; };
+    00000000000000000000001F /* PublicSourceCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicSourceCheck.swift; sourceTree = "<group>"; };
+    000000000000000000000021 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
+    000000000000000000000023 /* StreamBrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamBrowserApp.swift; sourceTree = "<group>"; };
+    000000000000000000000025 /* SystemTransfers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTransfers.swift; sourceTree = "<group>"; };
+    000000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+    000000000000000000000011 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+/* Begin PBXFrameworksBuildPhase section */
+    000000000000000000000008 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+/* Begin PBXGroup section */
+    000000000000000000000003 = {isa = PBXGroup; children = (000000000000000000000004, 000000000000000000000005); sourceTree = "<group>"; };
+    000000000000000000000004 = {isa = PBXGroup; children = (000000000000000000000013, 000000000000000000000015, 000000000000000000000017, 000000000000000000000019, 00000000000000000000001B, 00000000000000000000001D, 00000000000000000000001F, 000000000000000000000021, 000000000000000000000023, 000000000000000000000025, 000000000000000000000010, 000000000000000000000011); path = StreamBrowser; sourceTree = "<group>"; };
+    000000000000000000000005 = {isa = PBXGroup; children = (000000000000000000000006); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+/* Begin PBXNativeTarget section */
+    000000000000000000000002 = {isa = PBXNativeTarget; buildConfigurationList = 00000000000000000000000B; buildPhases = (000000000000000000000007, 000000000000000000000008, 000000000000000000000009); buildRules = (); dependencies = (); name = StreamBrowser; productName = StreamBrowser; productReference = 000000000000000000000006; productType = "com.apple.product-type.application"; };
+/* End PBXNativeTarget section */
+/* Begin PBXProject section */
+    000000000000000000000001 = {isa = PBXProject; attributes = {LastSwiftUpdateCheck = 1600; LastUpgradeCheck = 1600; }; buildConfigurationList = 00000000000000000000000A; compatibilityVersion = "Xcode 14.0"; developmentRegion = ko; hasScannedForEncodings = 0; knownRegions = (ko, en, Base); mainGroup = 000000000000000000000003; productRefGroup = 000000000000000000000005; projectDirPath = ""; projectRoot = ""; targets = (000000000000000000000002); };
+/* End PBXProject section */
+/* Begin PBXResourcesBuildPhase section */
+    000000000000000000000009 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000012); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+/* Begin PBXSourcesBuildPhase section */
+    000000000000000000000007 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000014, 000000000000000000000016, 000000000000000000000018, 00000000000000000000001A, 00000000000000000000001C, 00000000000000000000001E, 000000000000000000000020, 000000000000000000000022, 000000000000000000000024, 000000000000000000000026); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+/* Begin XCBuildConfiguration section */
+    00000000000000000000000C = {isa = XCBuildConfiguration; name = Debug; buildSettings = { CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; }; };
+    00000000000000000000000D = {isa = XCBuildConfiguration; name = Release; buildSettings = { CLANG_ENABLE_MODULES = YES; IPHONEOS_DEPLOYMENT_TARGET = 18.0; SDKROOT = iphoneos; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; VALIDATE_PRODUCT = YES; }; };
+    00000000000000000000000E = {isa = XCBuildConfiguration; name = Debug; buildSettings = { CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; INFOPLIST_FILE = StreamBrowser/Info.plist; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = local.streambrowser.ios; PRODUCT_NAME = StreamBrowser; TARGETED_DEVICE_FAMILY = 1; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; }; };
+    00000000000000000000000F = {isa = XCBuildConfiguration; name = Release; buildSettings = { CODE_SIGN_STYLE = Automatic; CURRENT_PROJECT_VERSION = 1; INFOPLIST_FILE = StreamBrowser/Info.plist; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = local.streambrowser.ios; PRODUCT_NAME = StreamBrowser; TARGETED_DEVICE_FAMILY = 1; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0; }; };
+/* End XCBuildConfiguration section */
+/* Begin XCConfigurationList section */
+    00000000000000000000000A = {isa = XCConfigurationList; buildConfigurations = (00000000000000000000000C, 00000000000000000000000D); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+    00000000000000000000000B = {isa = XCConfigurationList; buildConfigurations = (00000000000000000000000E, 00000000000000000000000F); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+  };
+  rootObject = 000000000000000000000001;
+}

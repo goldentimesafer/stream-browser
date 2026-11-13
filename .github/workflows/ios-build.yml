@@ -1,0 +1,24 @@
+name: iPhone build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate media policy and build unsigned IPA
+        run: bash scripts/build-ios.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamBrowser-unsigned
+          path: build/StreamBrowser-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7

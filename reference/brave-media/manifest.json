@@ -1,0 +1,98 @@
+{
+  "repository": "https://github.com/brave/brave-core",
+  "commit": "b38bae283b5a99943d114655f76a495d901a68b0",
+  "retrievedAt": "2026-11-13",
+  "purpose": "Curated reference snapshot, not a buildable app or a dependency-closed module.",
+  "files": [
+    {
+      "path": "ios/brave-ios/Sources/Playlist/PlaylistDownloadManager.swift",
+      "decision": "port-parts",
+      "role": "파일/HLS 엔진의 생성·진행·취소·복구 구조",
+      "localPath": "upstream/ios/brave-ios/Sources/Playlist/PlaylistDownloadManager.swift",
+      "upstreamBlobSHA1": "c46e66eb6f679a8152ff2b746bf6579fb3541c68",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Playlist/PlaylistDownloadManager.swift",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Sources/Playlist/PlaylistMimeTypeDetector.swift",
+      "decision": "reference-only",
+      "role": "형식 판별 참고; 확인된 분기 문제 수정 전 사용 금지",
+      "localPath": "upstream/ios/brave-ios/Sources/Playlist/PlaylistMimeTypeDetector.swift",
+      "upstreamBlobSHA1": "92a834657886bd9ef13801b2190a8ccb1a72abfb",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Playlist/PlaylistMimeTypeDetector.swift",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Sources/Playlist/PlaylistAssetFetcher.swift",
+      "decision": "small-helper",
+      "role": "AVURLAsset 로딩 취소 래퍼; Apple 프레임워크만 사용",
+      "localPath": "upstream/ios/brave-ios/Sources/Playlist/PlaylistAssetFetcher.swift",
+      "upstreamBlobSHA1": "afc07c018530d0a3bcf2e27767d3e255173ee145",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Playlist/PlaylistAssetFetcher.swift",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Sources/Web/Download.swift",
+      "decision": "port-parts",
+      "role": "다운로드 상태·delegate·표시 파일명 정리",
+      "localPath": "upstream/ios/brave-ios/Sources/Web/Download.swift",
+      "upstreamBlobSHA1": "fe732f03d7a40c01787501b5e96fc1a678520201",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Web/Download.swift",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Sources/Brave/Frontend/Browser/DownloadQueue.swift",
+      "decision": "reference-only",
+      "role": "큐 이벤트 참고; 동시성 제한과 총량 불명 처리 재작성",
+      "localPath": "upstream/ios/brave-ios/Sources/Brave/Frontend/Browser/DownloadQueue.swift",
+      "upstreamBlobSHA1": "975e81eb3837977594314b18a4826300d247e160",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Brave/Frontend/Browser/DownloadQueue.swift",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Sources/Brave/Frontend/UserContent/UserScripts/Scripts_Dynamic/ScriptHandlers/Paged/PlaylistScriptHandler.swift",
+      "decision": "defer",
+      "role": "후속 영상 후보 메시지 계약 참고",
+      "localPath": "upstream/ios/brave-ios/Sources/Brave/Frontend/UserContent/UserScripts/Scripts_Dynamic/ScriptHandlers/Paged/PlaylistScriptHandler.swift",
+      "upstreamBlobSHA1": "7514e24f3fb1ca119542f9fe6e02ab38da5b5076",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Brave/Frontend/UserContent/UserScripts/Scripts_Dynamic/ScriptHandlers/Paged/PlaylistScriptHandler.swift",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Sources/Brave/Frontend/UserContent/UserScripts/Scripts_Dynamic/Scripts/Paged/PlaylistScript.js",
+      "decision": "defer",
+      "role": "후속 DOM 영상 후보 탐지 참고; 독립 실행 불가",
+      "localPath": "upstream/ios/brave-ios/Sources/Brave/Frontend/UserContent/UserScripts/Scripts_Dynamic/Scripts/Paged/PlaylistScript.js",
+      "upstreamBlobSHA1": "d5261322559b234cc3e8fadbced46b6337125d93",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Brave/Frontend/UserContent/UserScripts/Scripts_Dynamic/Scripts/Paged/PlaylistScript.js",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Sources/Brave/Frontend/Browser/Helpers/PlaylistTabHelper.swift",
+      "decision": "reference-only",
+      "role": "브리지·사이트 정책 의존성 확인; 직접 이식 제외",
+      "localPath": "upstream/ios/brave-ios/Sources/Brave/Frontend/Browser/Helpers/PlaylistTabHelper.swift",
+      "upstreamBlobSHA1": "2d85d54fcef7f409a2368e0508ef0e218f40bde2",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Sources/Brave/Frontend/Browser/Helpers/PlaylistTabHelper.swift",
+      "modified": false
+    },
+    {
+      "path": "ios/brave-ios/Package.swift",
+      "decision": "dependency-evidence",
+      "role": "전이 의존성 확인용; 프로젝트 manifest로 사용 금지",
+      "localPath": "upstream/ios/brave-ios/Package.swift",
+      "upstreamBlobSHA1": "5d240c1e7fad16ca8c71be637cb0eeaa46eb1327",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/ios/brave-ios/Package.swift",
+      "modified": false
+    },
+    {
+      "path": "LICENSE",
+      "decision": "license",
+      "role": "MPL-2.0 원문",
+      "localPath": "upstream/LICENSE",
+      "upstreamBlobSHA1": "d0a1fa1482eea82e19510e7920cbe3a03e41f691",
+      "url": "https://github.com/brave/brave-core/blob/b38bae283b5a99943d114655f76a495d901a68b0/LICENSE",
+      "modified": false
+    }
+  ]
+}
