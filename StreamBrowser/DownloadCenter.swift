@@ -545,8 +545,7 @@ enum LocalMediaAsset {
     static func make(_ url: URL, kind: MediaKind) -> AVURLAsset {
         let restrictions: AVAssetReferenceRestrictions = kind == .hls ? .forbidLocalReferenceToRemote : .forbidAll
         return AVURLAsset(url: url, options: [
-            AVURLAssetReferenceRestrictionsKey: NSNumber(value: restrictions.rawValue),
-            AVURLAssetShouldSupportAliasDataReferencesKey: false
+            AVURLAssetReferenceRestrictionsKey: NSNumber(value: restrictions.rawValue)
         ])
     }
 }

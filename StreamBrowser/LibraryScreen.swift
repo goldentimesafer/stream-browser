@@ -283,7 +283,7 @@ struct OfflinePlayer: View {
             value.allowsExternalPlayback = false
             value.defaultRate = rate
             if center.library.rememberPosition, let position = item.position, position.isFinite, position > 0 {
-                value.seek(to: CMTime(seconds: position, preferredTimescale: 600))
+                value.seek(to: CMTime(seconds: position, preferredTimescale: 600), completionHandler: { _ in })
             }
             player = value
             storedTracks = tracks
