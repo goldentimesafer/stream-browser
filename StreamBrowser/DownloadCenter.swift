@@ -83,6 +83,7 @@ final class DownloadCenter: ObservableObject {
     private var activeSystemSessions = Set<String>()
     private var restoring = false
     private var startingWeb = Set<UUID>()
+    private var stoppingWeb = Set<UUID>()
     private var monitor: Task<Void, Never>?
     private let delegates = SystemTransferDelegate()
     private let fileSessionID = "local.streambrowser.files.v1"
@@ -605,7 +606,14 @@ final class DownloadCenter: ObservableObject {
                 try changeJob(id, to: job)
                 if let task = systemTasks[id] { task.cancel() }
                 else if job.ready || !restoring { try discardJob(id) }
-            } catch { notice = MediaError.storage.message; return }
+            } catch {
+                // A full disk must not prevent the user from stopping network I/O.
+                jobs[id] = job
+                systemTasks[id]?.cancel()
+                validations[id]?.cancel()
+                notice = "전송은 중단 요청했지만 취소 기록을 저장하지 못했습니다. 공간 확보 후 다시 정리하세요."
+                return
+            }
         }
         do { try store.discardImport(id, library: library) }
         catch { notice = MediaError.storage.message; return }
@@ -617,7 +625,10 @@ final class DownloadCenter: ObservableObject {
         webStarters[id] = nil
         checks.removeValue(forKey: id)?.cancel()
         validations[id]?.cancel()
-        if let transfer = webTransfers.removeValue(forKey: id) { transfer.stop() }
+        if let transfer = webTransfers.removeValue(forKey: id) {
+            stoppingWeb.insert(id)
+            transfer.stop()
+        }
         rows.removeAll { $0.id == id }
         pump()
     }
@@ -625,6 +636,8 @@ final class DownloadCenter: ObservableObject {
     func stopPrivateTransfers() {
         for id in rows.filter({ $0.mode == .web }).map(\.id) { cancel(id) }
     }
+
+    func webCancellationFinished(_ id: UUID) { stoppingWeb.remove(id) }
 
     private func save(_ data: LibraryData) throws {
         guard unlocked, libraryLoaded else { throw MediaError.storage }
@@ -675,11 +688,11 @@ final class DownloadCenter: ObservableObject {
         // Cancellation completion owns the final system package location.
         // Do not claim erasure while a system transfer can still write files.
         for _ in 0..<25 {
-            if !restoring && systemTasks.isEmpty && startingWeb.isEmpty { break }
+            if !restoring && systemTasks.isEmpty && startingWeb.isEmpty && stoppingWeb.isEmpty { break }
             do { try await Task.sleep(for: .milliseconds(200)) } catch { return false }
         }
         reconcileCancelledJobs()
-        guard unlocked, foreground, !restoring, systemTasks.isEmpty, jobs.isEmpty, rows.isEmpty else {
+        guard unlocked, foreground, !restoring, systemTasks.isEmpty, stoppingWeb.isEmpty, jobs.isEmpty, rows.isEmpty else {
             notice = "다운로드 취소·정리가 아직 끝나지 않았습니다. 잠시 후 앱 데이터 삭제를 다시 실행하세요."
             return false
         }
@@ -781,6 +794,11 @@ private final class WebTransfer: NSObject, WKDownloadDelegate {
         proposedDestination = nil
         pending?(false)
         let location = location
-        download.cancel { _ in if let location { try? MediaStore().remove(location) } }
+        let id = id
+        let center = center
+        download.cancel { _ in
+            if let location { try? MediaStore().remove(location) }
+            Task { @MainActor in center?.webCancellationFinished(id) }
+        }
     }
 }
