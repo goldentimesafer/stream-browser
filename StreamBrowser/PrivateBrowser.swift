@@ -42,6 +42,13 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     var tab: BrowserTab? { tabs.first { $0.id == selection } }
 
+    /// WebKit link-menu actions that would persist the URL in Safari's Reading List or open it in another app.
+    private static let leakingMenuActions: Set<String> = [
+        "WKElementActionTypeAddToReadingList",
+        "WKElementActionTypeOpenInDefaultBrowser",
+        "WKElementActionTypeOpenInExternalApplication"
+    ]
+
     func prepare() {
         guard ruleTask == nil else { return }
         ruleTask = Task {
@@ -221,7 +228,7 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
             }
         }
         decisionHandler(action.shouldPerformDownload && action.navigationType == .linkActivated &&
-                        action.sourceFrame.isMainFrame ? .download : .allow)
+                        action.sourceFrame.isMainFrame ? .download : .allowWithoutAppLinks)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigation: WKNavigationResponse,
@@ -259,12 +266,21 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
             completionHandler(nil)
             return
         }
-        // Keep WebKit's own link actions and add one that opens the save form for this link.
+        // Keep WebKit's link actions except those that hand the URL to Safari or another app,
+        // and add one that opens the save form for this link.
         completionHandler(UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] suggested in
-            let save = UIAction(title: "이 링크의 영상 저장", image: UIImage(systemName: "arrow.down.to.line")) { _ in
-                Task { @MainActor in self?.pendingSaveURL = url }
+            let kept = suggested.filter { !Self.leakingMenuActions.contains(($0 as? UIAction)?.identifier.rawValue ?? "") }
+            var items: [UIMenuElement] = []
+            // For universal links WebKit replaces "Open" with the app/browser actions removed above.
+            if !kept.contains(where: { ($0 as? UIAction)?.identifier.rawValue == "WKElementActionTypeOpen" }) {
+                items.append(UIAction(title: "열기", image: UIImage(systemName: "safari")) { _ in
+                    Task { @MainActor in self?.load(url) }
+                })
             }
-            return UIMenu(children: [save] + suggested)
+            items.append(UIAction(title: "이 링크의 영상 저장", image: UIImage(systemName: "arrow.down.to.line")) { _ in
+                Task { @MainActor in self?.pendingSaveURL = url }
+            })
+            return UIMenu(children: items + kept)
         })
     }
 
@@ -370,6 +386,12 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
             completionHandler(accepted ? text : nil)
         }
     }
+}
+
+private extension WKNavigationActionPolicy {
+    /// WebKit's `_WKNavigationActionPolicyAllowWithoutTryingAppLink` (allow + 2). Plain `.allow` lets WebKit
+    /// open universal links in another installed app, which would carry a private page's URL out of the browser.
+    static let allowWithoutAppLinks = WKNavigationActionPolicy(rawValue: WKNavigationActionPolicy.allow.rawValue + 2) ?? .allow
 }
 
 struct WebSurface: UIViewRepresentable {
