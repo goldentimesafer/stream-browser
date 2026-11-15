@@ -13,7 +13,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Build the simulator app and UI tests
@@ -64,7 +64,7 @@ jobs:
             fi
           done
           exit "$missing"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() && hashFiles('build/screenshots/*.png') != '' }}
         with:
           name: StreamBrowser-screenshots
@@ -84,7 +84,7 @@ jobs:
               find "$folder" -type f -name 'StreamBrowser*' -exec cp {} build/diagnostics/ \;
             fi
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: StreamBrowser-simulator-diagnostics
