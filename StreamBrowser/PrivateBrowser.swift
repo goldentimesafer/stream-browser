@@ -250,9 +250,12 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
         return urls;
         """
+        // Call the Objective-C method directly. The Swift-refined wrapper lives in
+        // libswiftWebKit.dylib, which the iOS 18.5 runtime does not provide, so linking it
+        // makes the app abort at launch there (seen on the iOS 18.5 simulator).
         let result: Any? = try? await withCheckedThrowingContinuation { (reply: CheckedContinuation<Any, Error>) in
-            current.view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .defaultClient) { result in
-                reply.resume(with: result)
+            current.view.__callAsyncJavaScript(script, arguments: nil, inFrame: nil, in: .defaultClient) { value, error in
+                if let error { reply.resume(throwing: error) } else { reply.resume(returning: value ?? NSNull()) }
             }
         }
         guard let values = result as? [String], active, tab?.id == current.id, current.view.url == page else { return [] }

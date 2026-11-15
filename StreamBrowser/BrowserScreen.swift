@@ -139,7 +139,8 @@ struct BrowserScreen: View {
 
     private func find(in view: WKWebView) {
         guard !findText.isEmpty else { return }
-        view.find(findText, configuration: WKFindConfiguration()) { result in
+        // Objective-C entry point; the Swift wrapper requires libswiftWebKit.dylib (absent from the iOS 18.5 runtime).
+        view.__find(findText, with: WKFindConfiguration()) { result in
             findResult = result.matchFound ? "찾음" : "일치 없음"
         }
     }
