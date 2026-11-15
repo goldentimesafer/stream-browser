@@ -231,6 +231,8 @@ final class DownloadCenter: ObservableObject {
         let id = UUID()
         requests[id] = url
         if mode == .hls { hlsOptions[id] = options }
+        // Background transfers can finish while the app is closed; ask once so completion can be announced.
+        if mode.usesSystemSession { DownloadNotifier.requestPermission() }
         rows.insert(DownloadRow(id: id, mode: mode, name: MediaPolicy.displayName(url.deletingPathExtension().lastPathComponent)), at: 0)
         if mode == .web {
             guard let webView else { fail(id, .interrupted); return }
@@ -366,6 +368,7 @@ final class DownloadCenter: ObservableObject {
             guard job.location != nil else { failSystem(id, .interrupted); return }
             job.ready = true
             try changeJob(id, to: job)
+            if !foreground { DownloadNotifier.post(success: true) }
             ensureRow(id, mode: job.mode)
             update(id) { $0.failure = nil }
             if unlocked && foreground { processReadyJobs() }
@@ -574,6 +577,7 @@ final class DownloadCenter: ObservableObject {
     }
 
     private func failSystem(_ id: UUID, _ error: MediaError) {
+        if !foreground, jobs[id]?.cancelled == false { DownloadNotifier.post(success: false) }
         if let job = jobs[id] { ensureRow(id, mode: job.mode) }
         if let task = systemTasks[id] {
             if var job = jobs[id] { job.cancelled = true; try? changeJob(id, to: job) }

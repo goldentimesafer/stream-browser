@@ -7,6 +7,8 @@ final class BrowserTab: Identifiable {
     let id = UUID()
     let view: WKWebView
     var observations: [NSKeyValueObservation] = []
+    /// Requests the desktop version of pages in this tab only.
+    var desktopMode = false
 
     init(store: WKWebsiteDataStore, rules: WKContentRuleList?) {
         let configuration = WKWebViewConfiguration()
@@ -28,6 +30,8 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     @Published var selection: UUID?
     @Published private(set) var rulesStatus = "규칙 준비 중"
     @Published private(set) var exceptionHosts: Set<String> = []
+    /// A link the user chose to save from the web view's long-press menu.
+    @Published var pendingSaveURL: URL?
     private var store = WKWebsiteDataStore.nonPersistent()
     private var rules: WKContentRuleList?
     private var ruleTask: Task<Void, Never>?
@@ -84,10 +88,13 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         let item = BrowserTab(store: store, rules: rules)
         item.view.navigationDelegate = self
         item.view.uiDelegate = self
+        let refresh = UIRefreshControl()
+        refresh.addTarget(self, action: #selector(pullToRefresh(_:)), for: .valueChanged)
+        item.view.scrollView.refreshControl = refresh
         item.observations = [
             item.view.observe(\.url) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } },
             item.view.observe(\.title) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } },
-            item.view.observe(\.isLoading) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } },
+            item.view.observe(\.isLoading) { [weak self] _, _ in Task { @MainActor in self?.loadingChanged() } },
             item.view.observe(\.canGoBack) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } },
             item.view.observe(\.canGoForward) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } }
         ]
@@ -155,6 +162,27 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         tab.view.load(URLRequest(url: url))
     }
 
+    @objc private func pullToRefresh(_ sender: UIRefreshControl) {
+        guard active, let item = tabs.first(where: { $0.view.scrollView.refreshControl === sender }),
+              item.view.url != nil else {
+            sender.endRefreshing()
+            return
+        }
+        item.view.reload()
+    }
+
+    private func loadingChanged() {
+        for item in tabs where !item.view.isLoading { item.view.scrollView.refreshControl?.endRefreshing() }
+        objectWillChange.send()
+    }
+
+    func toggleDesktopMode() {
+        guard active, let tab else { return }
+        tab.desktopMode.toggle()
+        objectWillChange.send()
+        if tab.view.url != nil { tab.view.reload() }
+    }
+
     func toggleException() {
         guard let tab, let host = tab.view.url?.host?.lowercased() else { return }
         if !exceptionHosts.insert(host).inserted { exceptionHosts.remove(host) }
@@ -168,8 +196,15 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         if let rules, host.map({ exceptionHosts.contains($0.lowercased()) }) != true { controller.add(rules) }
     }
 
-    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction,
-                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+    func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
+                 decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+        let desktop = tabs.first(where: { $0.view === webView })?.desktopMode == true
+        preferences.preferredContentMode = desktop ? .desktop : .recommended
+        decideNavigation(webView, action: action) { decisionHandler($0, preferences) }
+    }
+
+    private func decideNavigation(_ webView: WKWebView, action: WKNavigationAction,
+                                  decisionHandler: (WKNavigationActionPolicy) -> Void) {
         guard active, let url = action.request.url else { decisionHandler(.cancel); return }
         if url.absoluteString == "about:blank" { decisionHandler(.allow); return }
         guard MediaPolicy.secureWebURL(url) else { decisionHandler(.cancel); return }
@@ -216,6 +251,26 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         if let source = navigationResponse.response.url { DownloadCenter.shared.acceptWebDownload(download, origin: source) }
         else { download.cancel { _ in } }
+    }
+
+    func webView(_ webView: WKWebView, contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
+                 completionHandler: @escaping @MainActor @Sendable (UIContextMenuConfiguration?) -> Void) {
+        guard active, webView === tab?.view, let url = elementInfo.linkURL, MediaPolicy.secureWebURL(url) else {
+            completionHandler(nil)
+            return
+        }
+        // Keep WebKit's own link actions and add one that opens the save form for this link.
+        completionHandler(UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] suggested in
+            let save = UIAction(title: "이 링크의 영상 저장", image: UIImage(systemName: "arrow.down.to.line")) { _ in
+                Task { @MainActor in self?.pendingSaveURL = url }
+            }
+            return UIMenu(children: [save] + suggested)
+        })
+    }
+
+    func webView(_ webView: WKWebView, contextMenuForElement elementInfo: WKContextMenuElementInfo,
+                 willCommitWithAnimator animator: any UIContextMenuInteractionCommitAnimating) {
+        if webView === tab?.view, let url = elementInfo.linkURL { load(url) }
     }
 
     func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin,

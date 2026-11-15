@@ -12,6 +12,8 @@ struct BrowserScreen: View {
     @State private var findText = ""
     @State private var findResult: String?
     @State private var showFind = false
+    /// Link chosen from the long-press menu; nil means "use the current page".
+    @State private var downloadURL: URL?
     @Environment(\.scenePhase) private var scenePhase
 
     private enum Panel: String, Identifiable {
@@ -64,12 +66,18 @@ struct BrowserScreen: View {
                               browser.tab?.view.isLoading == true ? "중지" : "새로고침") {
                     if let view = browser.tab?.view { if view.isLoading { view.stopLoading() } else { view.reload() } }
                 }.disabled(browser.tab == nil)
-                toolbarButton("arrow.down.to.line", "영상 저장") { panel = .download }
+                toolbarButton("arrow.down.to.line", "영상 저장") { downloadURL = nil; panel = .download }
                 toolbarButton("square.on.square", "탭 \(browser.tabs.count)개") { panel = .tabs }
                 Menu {
                     Button("북마크 목록", systemImage: "book") { panel = .bookmarks }
                     Button("현재 페이지 북마크", systemImage: "bookmark") { addBookmark() }.disabled(browser.tab?.view.url == nil)
                     Button("페이지에서 찾기", systemImage: "magnifyingglass") { showFind = true }.disabled(browser.tab == nil)
+                    if browser.tab?.desktopMode == true {
+                        Button("모바일 사이트 보기", systemImage: "iphone") { browser.toggleDesktopMode() }
+                    } else {
+                        Button("데스크톱 사이트 보기", systemImage: "desktopcomputer") { browser.toggleDesktopMode() }
+                            .disabled(browser.tab?.view.url == nil)
+                    }
                     if let url = browser.tab?.view.url, MediaPolicy.secureWebURL(url) {
                         ShareLink(item: url) { Label("현재 링크 공유", systemImage: "square.and.arrow.up") }
                     }
@@ -85,11 +93,17 @@ struct BrowserScreen: View {
         }
         .onChange(of: browser.selection) { _, _ in address = browser.tab?.view.url?.absoluteString ?? "" }
         .onChange(of: scenePhase) { _, phase in if phase == .background { panel = nil } }
+        .onChange(of: browser.pendingSaveURL) { _, url in
+            guard let url else { return }
+            browser.pendingSaveURL = nil
+            downloadURL = url
+            panel = .download
+        }
         .sheet(item: $panel) { selected in
             NavigationStack {
                 switch selected {
                 case .download:
-                    DownloadForm(initialURL: browser.tab?.view.url, browser: browser, center: center)
+                    DownloadForm(initialURL: downloadURL ?? browser.tab?.view.url, browser: browser, center: center)
                 case .tabs:
                     List {
                         Button("새 비공개 탭", systemImage: "plus") { browser.newTab(); panel = nil }
