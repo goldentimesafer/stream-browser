@@ -173,13 +173,15 @@ struct BrowserRoot: View {
         } message: { Text("현재 탭의 웹 세션에서 영상을 내려받습니다. 저장한 영상은 세션을 닫은 뒤에도 기기에 남습니다.") }
         .confirmationDialog("이 기기의 Stream Browser 데이터를 삭제할까요?", isPresented: $showErase, titleVisibility: .visible) {
             Button("앱 데이터 삭제", role: .destructive) {
-                browser.clear()
-                guard downloads.clear() else { return }
-                lockEnabled = true
-                downloads.lock()
-                browser.setActive(false)
-                locked = true
-                section = .browser
+                Task { @MainActor in
+                    browser.clear()
+                    guard await downloads.clear() else { return }
+                    lockEnabled = true
+                    downloads.lock()
+                    browser.setActive(false)
+                    locked = true
+                    section = .browser
+                }
             }
         } message: { Text("다운로드 작업, 저장 영상, 북마크와 설정을 정리합니다. 내보낸 사본은 사용자가 관리합니다.") }
     }

@@ -17,7 +17,15 @@ final class SystemTransferDelegate: NSObject, AVAssetDownloadDelegate, URLSessio
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        MainActor.assumeIsolated { DownloadCenter.shared.systemCompleted(task, failed: error != nil) }
+        MainActor.assumeIsolated { DownloadCenter.shared.systemCompleted(task, error: error) }
+    }
+
+    func urlSession(_ session: URLSession, assetDownloadTask: AVAssetDownloadTask,
+                    didLoad timeRange: CMTimeRange, totalTimeRangesLoaded loadedTimeRanges: [NSValue],
+                    timeRangeExpectedToLoad: CMTimeRange) {
+        MainActor.assumeIsolated {
+            DownloadCenter.shared.updateHLSProgress(assetDownloadTask, loaded: loadedTimeRanges, expected: timeRangeExpectedToLoad)
+        }
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,

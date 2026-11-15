@@ -139,7 +139,8 @@ struct BrowserScreen: View {
 
     private func find(in view: WKWebView) {
         guard !findText.isEmpty else { return }
-        view.find(findText, configuration: WKFindConfiguration()) { result in
+        // Objective-C entry point; the Swift wrapper requires libswiftWebKit.dylib (absent from the iOS 18.5 runtime).
+        view.__find(findText, with: WKFindConfiguration()) { result in
             findResult = result.matchFound ? "찾음" : "일치 없음"
         }
     }
@@ -162,6 +163,9 @@ struct DownloadForm: View {
     @State private var input: String
     @State private var mode: TransferMode
     @State private var permitted = false
+    @State private var candidates: [URL] = []
+    @State private var scanning = false
+    @State private var hlsOptions = HLSDownloadOptions()
 
     init(initialURL: URL?, browser: PrivateBrowser, center: DownloadCenter) {
         self.browser = browser; self.center = center
@@ -173,6 +177,26 @@ struct DownloadForm: View {
 
     var body: some View {
         Form {
+            Section("페이지에서 찾은 영상") {
+                if scanning { ProgressView() }
+                ForEach(candidates, id: \.self) { candidate in
+                    Button {
+                        input = candidate.absoluteString
+                        mode = candidate.pathExtension.lowercased() == "m3u8" ? .hls : .web
+                        permitted = false
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(MediaPolicy.displayName(candidate.lastPathComponent)).lineLimit(1)
+                            Text(candidate.host ?? "").font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if !scanning && candidates.isEmpty {
+                    Text("현재 페이지에서 직접 영상 주소를 찾지 못했습니다. 로그인·DRM·blob 영상이나 다른 프레임의 영상은 감지되지 않을 수 있습니다.")
+                        .font(.footnote)
+                }
+                Button("영상 주소 다시 찾기") { Task { await scan() } }.disabled(scanning)
+            }
             Section("영상 주소") {
                 TextField("https://…", text: $input, axis: .vertical).lineLimit(2...4)
                     .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
@@ -185,20 +209,57 @@ struct DownloadForm: View {
                 if mode.usesSystemSession {
                     Text("설정에 등록한 공개 HTTPS 출처에서 저장합니다. 셀룰러 데이터는 사용하지 않으며 시작 시간은 시스템 조건에 따릅니다.")
                         .font(.footnote).foregroundStyle(.secondary)
+                    Text("시스템 전송은 서버의 주소 변경을 자동으로 따를 수 있습니다. 등록한 출처 밖의 접속까지 차단하지 않으므로 신뢰하는 공개 제공자에만 사용하세요.")
+                        .font(.footnote).foregroundStyle(.secondary)
                     if mode == .hls {
                         Text("비암호화 주문형 HLS를 앱 안에 보관합니다.").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
                 Toggle("저장이 허용된 영상입니다", isOn: $permitted)
             }
+            if mode == .hls {
+                Section("HLS 저장 옵션") {
+                    Picker("최대 화질", selection: $hlsOptions.maximumHeight) {
+                        Text("자동").tag(0)
+                        Text("480p 이하").tag(480)
+                        Text("720p 이하").tag(720)
+                        Text("1080p 이하").tag(1080)
+                    }
+                    Picker("오디오 언어", selection: $hlsOptions.audioLanguage) {
+                        Text("기본").tag("")
+                        Text("한국어").tag("ko")
+                        Text("영어").tag("en")
+                        Text("일본어").tag("ja")
+                    }
+                    Picker("자막", selection: $hlsOptions.subtitleLanguage) {
+                        Text("기본").tag("")
+                        Text("저장 안 함").tag("none")
+                        Text("한국어").tag("ko")
+                        Text("영어").tag("en")
+                        Text("일본어").tag("ja")
+                    }
+                    Text("제공되는 화질과 언어만 저장할 수 있습니다. 선택한 언어가 없으면 시작 전에 알려드립니다.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
             Section {
                 Button("저장 시작", systemImage: "arrow.down.circle") {
                     guard let url else { return }
                     if mode == .web && browser.tab == nil { browser.newTab() }
-                    center.enqueue(url, mode: mode, webView: browser.tab?.view)
+                    center.enqueue(url, mode: mode, webView: browser.tab?.view, options: hlsOptions)
                     dismiss()
                 }.disabled(!permitted || url.map(MediaPolicy.secureWebURL) != true)
             }
         }.navigationTitle("영상 저장")
+            .task { await scan() }
+    }
+
+    @MainActor private func scan() async {
+        guard !scanning else { return }
+        scanning = true
+        defer { scanning = false }
+        let found = await browser.detectedMedia()
+        guard !Task.isCancelled else { return }
+        candidates = found
     }
 }

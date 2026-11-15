@@ -22,10 +22,10 @@ iPhone용 비공개 브라우저 소스입니다. 비공개 웹 탭, 직접 영�
 
 - 초기 일반 영상 지원 대상은 MP4·MOV·M4V입니다. 파일 헤더와 기기 재생 가능 여부를 확인합니다.
 - HLS는 등록된 HTTPS 출처의 비암호화 VOD를 처리합니다. 라이브, 암호화, 토큰 쿼리, 동적 URL 치환과 지원 목록 밖의 태그를 거부합니다. 초기 목록 검사는 시스템 엔진이 이후에 수행하는 각 요청을 가로채는 방식과 다릅니다. 공개 전송에는 검증된 공급원을 사용합니다. [Apple HLS 예제](https://developer.apple.com/documentation/avfoundation/using-avfoundation-to-play-and-persist-http-live-streams) · [백그라운드 리디렉션](https://developer.apple.com/documentation/foundation/urlsessiontaskdelegate/urlsession(_:task:willperformhttpredirection:newrequest:completionhandler:))
-- 재생은 기본 오디오와 저장된 자산을 대상으로 합니다. 다운로드할 대체 오디오·자막을 미리 고르는 화면은 현재 구현 범위에 없습니다. 잠금 중 재생 차단과 HLS 패키지의 파일 보호는 실기기에서 확인해야 합니다.
+- HLS 저장 전 최대 화질과 한국어·영어·일본어 오디오/자막을 선택할 수 있습니다. 제공되지 않는 언어는 시작 전에 안내합니다. 저장된 트랙은 재생 화면에서 선택합니다. 잠금 중 재생 차단과 HLS 패키지의 파일 보호는 실기기에서 확인해야 합니다.
 - 앱 탭·쿠키와 직접 링크는 브라우저 세션에 보관합니다. 공개 시스템 작업을 복구하기 위한 최소 로컬 기록과 다운로드된 영상은 기기에 남습니다. 기본 검색어는 제출할 때 DuckDuckGo로 전송됩니다.
 - 사이트 차단은 코드에 포함된 소수의 추적·광고 도메인부터 적용합니다. 보유 iPhone에서 차단 규칙 적용과 사이트 호환성을 확인합니다.
 
-`bash scripts/build-ios.sh`는 순수 Swift 정책 검사와 iPhone용 빌드를 수행합니다. 실기기에서는 직접 저장, 화면 잠금 중 공개 전송, 강제 종료 후 상태, 비행기 모드 HLS·MP4 재생, 내보내기, 삭제를 확인합니다. 전체 인수 조건은 [검증 계획](docs/Stream-Browser-검증계획-v1.0.md)에 있습니다.
+`bash scripts/build-ios.sh`는 순수 Swift 정책 검사, 실제 파일을 사용하는 저장 복구 검사와 iPhone용 빌드를 수행합니다. [v1.3 변경·검증 안내](docs/Stream-Browser-수정검증-v1.3.md)에 복구 기능, 일시정지, 영상 감지와 제약을 정리했습니다. 실기기에서는 직접 저장, 화면 잠금 중 공개 전송, 강제 종료 후 상태, 비행기 모드 HLS·MP4 재생, 내보내기, 삭제를 확인합니다. 전체 인수 조건은 [검증 계획](docs/Stream-Browser-검증계획-v1.0.md)에 있습니다.
 
-이 소스는 Windows에서 작성했습니다. Xcode 빌드와 재서명·설치, iPhone 다운로드·재생·데이터 보호 검증 결과는 아직 없습니다.
+이 소스는 Windows에서 개발합니다. 빌드 결과는 해당 커밋의 GitHub Actions에서 확인하며, iPhone 설치·다운로드·재생·데이터 보호는 별도 실기기 검증이 필요합니다.

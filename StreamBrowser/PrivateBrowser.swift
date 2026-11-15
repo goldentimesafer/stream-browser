@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WebKit
 
 @MainActor
@@ -32,6 +33,8 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var ruleTask: Task<Void, Never>?
     private var allowedDownloadNavigation: [UUID: URL] = [:]
     private var active = false
+    private var webDialog: UIAlertController?
+    private var dialogReply: ((Bool, String?) -> Void)?
 
     var tab: BrowserTab? { tabs.first { $0.id == selection } }
 
@@ -65,8 +68,9 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     func setActive(_ value: Bool) {
         active = value
         if value {
-            for item in tabs { item.view.setAllMediaPlaybackSuspended(false, completionHandler: nil) }
+            for item in tabs { item.view.setAllMediaPlaybackSuspended(item.id != selection, completionHandler: nil) }
         } else {
+            dismissWebDialog()
             allowedDownloadNavigation.removeAll()
             for item in tabs {
                 item.view.setAllMediaPlaybackSuspended(true, completionHandler: nil)
@@ -88,23 +92,32 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
             item.view.observe(\.canGoForward) { [weak self] _, _ in Task { @MainActor in self?.objectWillChange.send() } }
         ]
         tabs.append(item)
-        selection = item.id
+        select(item.id)
         if let url { load(url) }
     }
 
     func select(_ id: UUID) {
-        if selection != id { tab?.view.pauseAllMediaPlayback(completionHandler: nil) }
+        if selection != id {
+            dismissWebDialog()
+            tab?.view.pauseAllMediaPlayback(completionHandler: nil)
+            tab?.view.setAllMediaPlaybackSuspended(true, completionHandler: nil)
+        }
         selection = id
+        tab?.view.setAllMediaPlaybackSuspended(!active, completionHandler: nil)
     }
 
     func close(_ id: UUID) {
+        if selection == id { dismissWebDialog() }
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
         tabs[index].view.stopLoading()
         tabs[index].view.pauseAllMediaPlayback(completionHandler: nil)
         tabs[index].view.navigationDelegate = nil
         allowedDownloadNavigation[id] = nil
         tabs.remove(at: index)
-        if selection == id { selection = tabs.last?.id }
+        if selection == id {
+            selection = nil
+            if let next = tabs.last?.id { select(next) }
+        }
     }
 
     func clear() {
@@ -166,6 +179,7 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
             return
         }
         if action.targetFrame?.isMainFrame == true {
+            if webView === tab?.view { dismissWebDialog() }
             applyRules(webView, host: url.host)
             if let tab = tabs.first(where: { $0.view === webView }) {
                 allowedDownloadNavigation[tab.id] = action.navigationType == .linkActivated ? url : nil
@@ -216,7 +230,90 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        if webView === tab?.view { dismissWebDialog() }
         DownloadCenter.shared.notice = "페이지가 중단되었습니다. 새로고침해 다시 열 수 있습니다."
+    }
+
+    func detectedMedia() async -> [URL] {
+        guard active, let current = tab else { return [] }
+        let page = current.view.url
+        let script = """
+        const urls = [];
+        for (const node of document.querySelectorAll('video, video source, a[href]')) {
+            if (urls.length >= 64) break;
+            const value = node.currentSrc || node.src || node.href;
+            if (!value) continue;
+            try {
+                const url = new URL(value, document.baseURI);
+                if (node.tagName !== 'A' || /\\.(mp4|mov|m4v|m3u8)$/i.test(url.pathname)) urls.push(url.href);
+            } catch (_) {}
+        }
+        return urls;
+        """
+        // Call the Objective-C method directly. The Swift-refined wrapper lives in
+        // libswiftWebKit.dylib, which the iOS 18.5 runtime does not provide, so linking it
+        // makes the app abort at launch there (seen on the iOS 18.5 simulator).
+        let result: Any? = try? await withCheckedThrowingContinuation { (reply: CheckedContinuation<Any, Error>) in
+            current.view.__callAsyncJavaScript(script, arguments: nil, inFrame: nil, in: .defaultClient) { value, error in
+                if let error { reply.resume(throwing: error) } else { reply.resume(returning: value ?? NSNull()) }
+            }
+        }
+        guard let values = result as? [String], active, tab?.id == current.id, current.view.url == page else { return [] }
+        var seen = Set<URL>()
+        return values.compactMap { text in
+            guard text.utf8.count <= 4096, let url = URL(string: text), MediaPolicy.secureWebURL(url),
+                  seen.insert(url).inserted else { return nil }
+            return url
+        }
+    }
+
+    private func dismissWebDialog() {
+        let reply = dialogReply
+        dialogReply = nil
+        webDialog?.dismiss(animated: false)
+        webDialog = nil
+        reply?(false, nil)
+    }
+
+    private func presentWebDialog(_ view: WKWebView, frame: WKFrameInfo, message: String,
+                                  prompt: String? = nil, isPrompt: Bool = false, alertOnly: Bool = false,
+                                  reply: @escaping (Bool, String?) -> Void) {
+        guard active, view === tab?.view, webDialog == nil,
+              var presenter = view.window?.rootViewController else { reply(false, nil); return }
+        while let presented = presenter.presentedViewController { presenter = presented }
+        guard !(presenter is UIAlertController), !presenter.isBeingDismissed else { reply(false, nil); return }
+        let host = frame.securityOrigin.host
+        let dialog = UIAlertController(title: "웹사이트: \(host)", message: String(message.prefix(2000)), preferredStyle: .alert)
+        if isPrompt { dialog.addTextField { $0.text = prompt; $0.autocorrectionType = .no } }
+        dialogReply = reply
+        webDialog = dialog
+        let finish: (Bool) -> Void = { [weak self, weak dialog] accepted in
+            guard let self, let dialog, self.webDialog === dialog else { return }
+            let completion = self.dialogReply
+            self.dialogReply = nil
+            self.webDialog = nil
+            completion?(accepted, accepted ? dialog.textFields?.first?.text : nil)
+        }
+        dialog.addAction(UIAlertAction(title: "확인", style: .default) { _ in finish(true) })
+        if !alertOnly { dialog.addAction(UIAlertAction(title: "취소", style: .cancel) { _ in finish(false) }) }
+        presenter.present(dialog, animated: true)
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable () -> Void) {
+        presentWebDialog(webView, frame: frame, message: message, alertOnly: true) { _, _ in completionHandler() }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void) {
+        presentWebDialog(webView, frame: frame, message: message) { accepted, _ in completionHandler(accepted) }
+    }
+
+    func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?,
+                 initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (String?) -> Void) {
+        presentWebDialog(webView, frame: frame, message: prompt, prompt: defaultText, isPrompt: true) { accepted, text in
+            completionHandler(accepted ? text : nil)
+        }
     }
 }
 
