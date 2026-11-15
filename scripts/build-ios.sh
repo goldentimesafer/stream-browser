@@ -8,6 +8,9 @@ mkdir -p "$output"
 xcodebuild -version
 swiftc "$root/StreamBrowser/MediaPolicy.swift" "$root/Tests/MediaPolicyChecks.swift" -o "$output/media-policy-checks"
 "$output/media-policy-checks"
+swiftc "$root/StreamBrowser/MediaPolicy.swift" "$root/StreamBrowser/MediaStore.swift" \
+  "$root/Tests/MediaStoreChecks.swift" -o "$output/media-store-checks"
+"$output/media-store-checks"
 
 xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
   -configuration Release -destination 'generic/platform=iOS' \

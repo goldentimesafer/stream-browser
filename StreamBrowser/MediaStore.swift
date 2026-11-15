@@ -28,21 +28,35 @@ struct SystemJob: Codable {
     var location: String?
     var ready = false
     var cancelled = false
+    var paused: Bool?
+}
+
+struct PendingImport: Codable {
+    let source: String
+    let item: SavedMedia
 }
 
 struct MediaStore {
     private let fm = FileManager.default
-    private let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+    private let home: URL
+    init(home: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)) { self.home = home }
     var root: URL { home.appendingPathComponent("Library/Application Support/StreamBrowser", isDirectory: true) }
     private var staging: URL { root.appendingPathComponent("Staging", isDirectory: true) }
     private var media: URL { root.appendingPathComponent("Media", isDirectory: true) }
     private var exports: URL { root.appendingPathComponent("Exports", isDirectory: true) }
     private var libraryURL: URL { root.appendingPathComponent("library.json") }
     private var jobsURL: URL { staging.appendingPathComponent("jobs.json") }
+    private var imports: URL { root.appendingPathComponent("Imports", isDirectory: true) }
+    private var backupURL: URL { root.appendingPathComponent("library-backup.json") }
 
     func readLibrary() throws -> LibraryData { try read(libraryURL, fallback: LibraryData()) }
     func readJobs() throws -> [UUID: SystemJob] { try read(jobsURL, fallback: [:]) }
-    func writeLibrary(_ data: LibraryData) throws { try write(data, to: libraryURL, protection: .complete) }
+    func writeLibrary(_ data: LibraryData) throws {
+        // Mirror the new index, not the previous one: deleted metadata must not
+        // survive in a rolling backup. A pending import makes either copy replayable.
+        try write(data, to: backupURL, protection: .complete)
+        try write(data, to: libraryURL, protection: .complete)
+    }
     func writeJobs(_ jobs: [UUID: SystemJob]) throws {
         try write(jobs, to: jobsURL, protection: .completeUntilFirstUserAuthentication)
     }
@@ -91,10 +105,92 @@ struct MediaStore {
     func finalFile(_ source: URL, id: UUID) throws -> URL {
         try directory(media, protection: .complete)
         let final = media.appendingPathComponent(id.uuidString).appendingPathExtension(source.pathExtension)
-        try protect(source, .complete)
-        try fm.moveItem(at: source, to: final)
-        do { try protect(final, .complete) } catch { try? fm.removeItem(at: final); throw error }
+        if source != final && !fm.fileExists(atPath: final.path) {
+            try protect(source, .complete)
+            try fm.moveItem(at: source, to: final)
+        }
+        try protect(final, .complete)
         return final
+    }
+
+    func prepareImport(_ source: URL, id: UUID, kind: MediaKind, name: String) throws -> PendingImport {
+        let target = kind == .hls ? source : media.appendingPathComponent(id.uuidString).appendingPathExtension(source.pathExtension)
+        let item = SavedMedia(id: id, kind: kind, location: try reference(target), name: name,
+                              bytes: try diskUsage(source), date: Date(), position: nil)
+        let pending = PendingImport(source: try reference(source), item: item)
+        try directory(imports, protection: .complete)
+        try write(pending, to: importURL(id), protection: .complete)
+        return pending
+    }
+
+    private func importURL(_ id: UUID) -> URL { imports.appendingPathComponent(id.uuidString).appendingPathExtension("json") }
+    func hasPendingImport(_ id: UUID) -> Bool { fm.fileExists(atPath: importURL(id).path) }
+
+    func pendingImports() throws -> [PendingImport] {
+        guard fm.fileExists(atPath: imports.path) else { return [] }
+        return try fm.contentsOfDirectory(at: imports, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "json" }
+            .map { try JSONDecoder().decode(PendingImport.self, from: Data(contentsOf: $0)) }
+    }
+
+    func finishImport(_ pending: PendingImport, library: LibraryData) throws -> LibraryData {
+        var next = library
+        if !next.media.contains(where: { $0.id == pending.item.id }) {
+            let source = try resolve(pending.source)
+            let target = try resolve(pending.item.location)
+            if pending.item.kind == .hls { try protectAsset(target) }
+            else {
+                let final = try finalFile(source, id: pending.item.id)
+                guard final.standardizedFileURL == target.standardizedFileURL else { throw MediaError.storage }
+            }
+            next.media.insert(pending.item, at: 0)
+            try writeLibrary(next)
+        }
+        // A failed marker removal is harmless: replay observes the committed ID.
+        try? remove(importURL(pending.item.id))
+        return next
+    }
+
+    func recoverImports(_ library: LibraryData, excluding cancelled: Set<UUID> = []) throws -> LibraryData {
+        var recovered = library
+        for pending in try pendingImports() where !cancelled.contains(pending.item.id) {
+            recovered = try finishImport(pending, library: recovered)
+        }
+        return recovered
+    }
+
+    func discardImport(_ id: UUID, library: LibraryData) throws {
+        guard hasPendingImport(id) else { return }
+        let pending = try JSONDecoder().decode(PendingImport.self, from: Data(contentsOf: importURL(id)))
+        if !library.media.contains(where: { $0.id == id }) {
+            for ref in Set([pending.source, pending.item.location]) { try remove(resolve(ref)) }
+        }
+        try remove(importURL(id))
+    }
+
+    /// Explicit user recovery; preserve the corrupt original and all media.
+    func repairLibrary() throws -> LibraryData {
+        let original = try Data(contentsOf: libraryURL)
+        do { return try JSONDecoder().decode(LibraryData.self, from: original) }
+        catch is DecodingError { /* Recover below; never treat protected-data errors as corruption. */ }
+        let recovery = root.appendingPathComponent("Recovery", isDirectory: true)
+        try directory(recovery, protection: .complete)
+        try original.write(to: recovery.appendingPathComponent(UUID().uuidString).appendingPathExtension("json"),
+                           options: [.atomic, .completeFileProtection])
+        var restored = (try? read(backupURL, fallback: LibraryData())) ?? LibraryData()
+        if fm.fileExists(atPath: media.path) {
+            for url in try fm.contentsOfDirectory(at: media, includingPropertiesForKeys: [.isRegularFileKey]) {
+                guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true,
+                      let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
+                      !restored.media.contains(where: { $0.id == id }) else { continue }
+                restored.media.append(SavedMedia(id: id, kind: .file, location: try reference(url),
+                                                name: "복구한 영상", bytes: try diskUsage(url), date: Date(), position: nil))
+            }
+        }
+        // The caller replays pending imports after restoring this index.
+        // System packages without any surviving reference remain untouched.
+        try write(restored, to: libraryURL, protection: .complete)
+        return restored
     }
 
     func reference(_ url: URL) throws -> String {
@@ -166,23 +262,42 @@ struct MediaStore {
     }
 
     func cleanup(_ library: LibraryData, jobs: [UUID: SystemJob]) throws {
-        try removeTemporaryFiles()
+        try remove(exports)
+        let pending = try pendingImports()
         let keepFiles = Set(library.media.map(\.location)).union(jobs.values.compactMap(\.location))
-        for folder in [media, staging.appendingPathComponent("Public", isDirectory: true)] where fm.fileExists(atPath: folder.path) {
+            .union(pending.flatMap { [$0.source, $0.item.location] })
+        for folder in [media, staging.appendingPathComponent("Public", isDirectory: true),
+                       staging.appendingPathComponent("Web", isDirectory: true)] where fm.fileExists(atPath: folder.path) {
             for file in try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) {
                 if !keepFiles.contains(try reference(file)) { try remove(file) }
             }
         }
     }
 
-    func usage() throws -> Int64 {
-        guard let files = fm.enumerator(at: root, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) else { return 0 }
+    func usage(hlsLocations: Set<String> = []) throws -> Int64 {
+        var bytes = try diskUsage(root)
+        for ref in hlsLocations { bytes += try diskUsage(resolve(ref)) }
+        return bytes
+    }
+
+    func diskUsage(_ url: URL) throws -> Int64 {
+        guard fm.fileExists(atPath: url.path) else { return 0 }
+        let info = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .isSymbolicLinkKey])
+        guard info.isSymbolicLink != true else { throw MediaError.storage }
+        if info.isRegularFile == true { return Int64(info.fileSize ?? 0) }
+        guard let files = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]) else { return 0 }
         var bytes: Int64 = 0
         for case let file as URL in files {
-            let values = try file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+            let values = try file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey])
+            guard values.isSymbolicLink != true else { files.skipDescendants(); continue }
             if values.isRegularFile == true { bytes += Int64(values.fileSize ?? 0) }
         }
         return bytes
+    }
+
+    func removeRecoveryCopies() throws {
+        try remove(backupURL)
+        try remove(root.appendingPathComponent("Recovery", isDirectory: true))
     }
 
     private func directory(_ url: URL, protection: FileProtectionType) throws {

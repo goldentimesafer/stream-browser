@@ -47,6 +47,10 @@ struct LibraryScreen: View {
                                     }
                                     Button("기록 지우기") { center.cancel(row.id) }.buttonStyle(.borderless)
                                 } else {
+                                    if center.canPause(row.id) {
+                                        Button(row.paused ? "계속 다운로드" : "일시정지") { center.togglePause(row.id) }
+                                            .buttonStyle(.borderless)
+                                    }
                                     Button("취소", role: .destructive) { center.cancel(row.id) }.buttonStyle(.borderless)
                                 }
                             }.padding(.vertical, 4)
@@ -134,12 +138,6 @@ struct LibraryScreen: View {
             }
             .sheet(item: $exportItem, onDismiss: cleanupExport) { item in ActivitySheet(url: item.url) }
             .onChange(of: phase) { _, value in if value == .background { exportItem = nil } }
-            .task {
-                while !Task.isCancelled {
-                    center.refreshProgress()
-                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
-                }
-            }
         }
     }
 
@@ -199,6 +197,7 @@ struct OfflinePlayer: View {
     @State private var error: String?
     @State private var statusObservation: NSKeyValueObservation?
     @State private var storedTracks: [StoredTracks] = []
+    @State private var audioConfigured = false
     @Environment(\.scenePhase) private var phase
 
     var body: some View {
@@ -274,6 +273,14 @@ struct OfflinePlayer: View {
                 }
             }
             guard !Task.isCancelled, phase == .active, center.unlocked else { return }
+            do {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+                try AVAudioSession.sharedInstance().setActive(true)
+                audioConfigured = true
+            } catch {
+                self.error = "영상 오디오를 준비하지 못했습니다. 다시 열어 주세요."
+                return
+            }
             value.replaceCurrentItem(with: playerItem)
             statusObservation = playerItem.observe(\.status, options: [.initial, .new]) { item, _ in
                 if item.status == .failed {
@@ -290,6 +297,13 @@ struct OfflinePlayer: View {
         }
         .onChange(of: phase) { _, value in if value != .active { rememberAndStop() } }
         .onDisappear { rememberAndStop() }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in
+            player?.pause()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.routeChangeNotification)) { notification in
+            if let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+               AVAudioSession.RouteChangeReason(rawValue: raw) == .oldDeviceUnavailable { player?.pause() }
+        }
     }
 
     private func rememberAndStop() {
@@ -306,6 +320,10 @@ struct OfflinePlayer: View {
         player.replaceCurrentItem(with: nil)
         statusObservation = nil
         self.player = nil
+        if audioConfigured {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            audioConfigured = false
+        }
     }
 }
 

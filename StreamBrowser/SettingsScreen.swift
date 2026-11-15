@@ -32,6 +32,12 @@ struct SettingsScreen: View {
                     Text("공개 파일과 HLS를 저장할 때만 사용합니다. 직접 관리하거나 신뢰하는 호스트의 이름을 등록하세요. HLS가 별도 미디어 호스트를 쓰면 그 이름도 필요합니다.")
                 }
                 Section("저장함") {
+                    if center.libraryRecoveryRequired {
+                        Text("저장 목록을 읽을 수 없습니다. 손상된 원본과 영상은 보존한 채 백업·파일에서 목록을 복구합니다.")
+                        Button("저장 목록 복구") { center.repairLibrary() }
+                    } else {
+                        Button("저장 작업 복구") { center.unlock() }
+                    }
                     Toggle("재생 위치 기억", isOn: Binding(get: { center.library.rememberPosition }, set: { enabled in
                         center.modifyLibrary { data in
                             data.rememberPosition = enabled
@@ -39,10 +45,11 @@ struct SettingsScreen: View {
                         }
                     }))
                     LabeledContent("앱 관리 파일", value: ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
-                    Text("시스템에서 보관하는 HLS 용량은 이 수치에서 제외됩니다.").font(.footnote).foregroundStyle(.secondary)
+                    Text("앱이 참조하는 HLS 패키지와 임시 파일을 포함합니다. 시스템이 별도로 관리하는 전송 캐시는 포함되지 않을 수 있습니다.").font(.footnote).foregroundStyle(.secondary)
                     Button("사용량 다시 계산") { bytes = center.usage() }
                 }
-                Section { Button("앱 데이터 삭제", role: .destructive, action: erase) }
+                Section { Button(center.isErasing ? "삭제 처리 중…" : "앱 데이터 삭제", role: .destructive, action: erase)
+                        .disabled(center.isErasing || center.libraryRecoveryRequired) }
             }
             .navigationTitle("설정")
             .onAppear { bytes = center.usage() }

@@ -20,6 +20,38 @@ enum TransferMode: String, Codable {
 
 enum MediaError: String, Error {
     case address, untrustedSource, redirect, response, format, storage, hls, interrupted, busy
+    case offline, timeout, authentication, missing, throttled, certificate, selection
+
+    static func httpStatus(_ code: Int) -> MediaError? {
+        switch code {
+        case 200, 206: return nil
+        case 401, 403: return .authentication
+        case 404, 410: return .missing
+        case 429, 503: return .throttled
+        case 300..<400: return .redirect
+        default: return .response
+        }
+    }
+
+    static func classify(_ error: Error) -> MediaError {
+        if let error = error as? MediaError { return error }
+        let value = error as NSError
+        if value.domain == NSCocoaErrorDomain {
+            if value.code == NSFileWriteOutOfSpaceError || value.code == NSFileReadNoPermissionError || value.code == NSFileWriteNoPermissionError { return .storage }
+        }
+        guard value.domain == NSURLErrorDomain else { return .response }
+        switch value.code {
+        case NSURLErrorNotConnectedToInternet, NSURLErrorNetworkConnectionLost, NSURLErrorDataNotAllowed: return .offline
+        case NSURLErrorTimedOut: return .timeout
+        case NSURLErrorUserAuthenticationRequired: return .authentication
+        case NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate,
+             NSURLErrorServerCertificateHasUnknownRoot, NSURLErrorServerCertificateNotYetValid,
+             NSURLErrorSecureConnectionFailed: return .certificate
+        case NSURLErrorCancelled: return .interrupted
+        case NSURLErrorCannotWriteToFile: return .storage
+        default: return .response
+        }
+    }
 
     var message: String {
         switch self {
@@ -32,6 +64,13 @@ enum MediaError: String, Error {
         case .hls: "검증된 HTTPS 비암호화 주문형 HLS만 저장할 수 있습니다."
         case .interrupted: "작업이 중단되었습니다. 링크를 확인하고 다시 시작하세요."
         case .busy: "진행 중인 작업이 많습니다. 잠시 후 다시 시도하세요."
+        case .offline: "네트워크 연결이 끊겼거나 Wi-Fi가 필요합니다. 연결을 확인하고 다시 시도하세요."
+        case .timeout: "서버 응답 시간이 초과되었습니다. 잠시 후 다시 시도하세요."
+        case .authentication: "로그인 또는 접근 권한이 필요합니다. 공개 전송에는 인증 없는 주소를 사용하세요."
+        case .missing: "영상 주소가 만료되었거나 파일이 없습니다. 새 링크를 입력하세요."
+        case .throttled: "서버가 요청을 제한하거나 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요."
+        case .certificate: "서버의 보안 인증서를 확인할 수 없어 연결을 중단했습니다."
+        case .selection: "선택한 오디오·자막을 제공하지 않는 영상입니다. 언어를 기본으로 바꾸거나 다른 언어를 선택하세요."
         }
     }
 }

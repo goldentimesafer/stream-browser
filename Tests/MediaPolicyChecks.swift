@@ -13,6 +13,12 @@ struct MediaPolicyChecks {
         precondition(MediaPolicy.displayName("../a\\b\u{202E}") == "..ab")
         precondition(MediaPolicy.hasMovieHeader(Data([0, 0, 0, 20, 102, 116, 121, 112, 105, 115, 111, 109])))
         precondition(!MediaPolicy.hasMovieHeader(Data("<html>Denied</html>".utf8)))
+        precondition(MediaError.httpStatus(403) == .authentication)
+        precondition(MediaError.httpStatus(404) == .missing)
+        precondition(MediaError.httpStatus(429) == .throttled)
+        precondition(MediaError.classify(URLError(.timedOut)) == .timeout)
+        precondition(MediaError.classify(URLError(.notConnectedToInternet)) == .offline)
+        precondition(MediaError.classify(URLError(.serverCertificateUntrusted)) == .certificate)
 
         let master = try HLSManifest("""
             #EXTM3U

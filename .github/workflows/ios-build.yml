@@ -2,6 +2,13 @@ name: iPhone build
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'StreamBrowser/**'
+      - 'StreamBrowser.xcodeproj/**'
+      - 'Tests/**'
+      - 'scripts/**'
+      - '.github/workflows/ios-build.yml'
 
 permissions:
   contents: read
@@ -14,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Validate media policy and build unsigned IPA
+      - name: Validate media policy, recovery and build unsigned IPA
         run: bash scripts/build-ios.sh
       - uses: actions/upload-artifact@v4
         with:

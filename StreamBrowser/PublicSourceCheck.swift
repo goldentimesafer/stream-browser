@@ -66,6 +66,7 @@ enum PublicSourceCheck {
     private static func validate(_ response: URLResponse, expected: URL, partial: Bool) throws {
         guard let http = response as? HTTPURLResponse else { throw MediaError.response }
         guard response.url == expected, !(300..<400).contains(http.statusCode) else { throw MediaError.redirect }
+        if let error = MediaError.httpStatus(http.statusCode) { throw error }
         guard http.statusCode == 200 || partial && http.statusCode == 206 else { throw MediaError.response }
     }
 }
