@@ -253,7 +253,7 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         else { download.cancel { _ in } }
     }
 
-    func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo,
+    func webView(_ webView: WKWebView, contextMenuConfigurationForElement elementInfo: WKContextMenuElementInfo,
                  completionHandler: @escaping @MainActor @Sendable (UIContextMenuConfiguration?) -> Void) {
         guard active, webView === tab?.view, let url = elementInfo.linkURL, MediaPolicy.secureWebURL(url) else {
             completionHandler(nil)
