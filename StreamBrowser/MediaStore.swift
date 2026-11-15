@@ -69,9 +69,16 @@ struct MediaStore {
     private func write<T: Encodable>(_ value: T, to url: URL, protection: FileProtectionType) throws {
         try directory(root, protection: .completeUntilFirstUserAuthentication)
         if url == jobsURL { try directory(staging, protection: .completeUntilFirstUserAuthentication) }
-        let options: Data.WritingOptions = protection == .complete ? [.atomic, .completeFileProtection] :
-            [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
-        try JSONEncoder().encode(value).write(to: url, options: options)
+        try JSONEncoder().encode(value).write(to: url, options: writingOptions(protection))
+    }
+
+    private func writingOptions(_ protection: FileProtectionType) -> Data.WritingOptions {
+        #if os(iOS)
+        return protection == .complete ? [.atomic, .completeFileProtection] : [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        #else
+        // The macOS command-line recovery checks have no iOS Data Protection.
+        return [.atomic]
+        #endif
     }
 
     func reserve(bytes: Int64?) throws {
@@ -130,6 +137,7 @@ struct MediaStore {
         guard fm.fileExists(atPath: imports.path) else { return [] }
         return try fm.contentsOfDirectory(at: imports, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "json" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
             .map { try JSONDecoder().decode(PendingImport.self, from: Data(contentsOf: $0)) }
     }
 
@@ -151,12 +159,11 @@ struct MediaStore {
         return next
     }
 
-    func recoverImports(_ library: LibraryData, excluding cancelled: Set<UUID> = []) throws -> LibraryData {
-        var recovered = library
+    func recoverImports(_ library: inout LibraryData, excluding cancelled: Set<UUID> = []) throws {
         for pending in try pendingImports() where !cancelled.contains(pending.item.id) {
-            recovered = try finishImport(pending, library: recovered)
+            // Publish each successful commit even when a later item cannot be recovered.
+            library = try finishImport(pending, library: library)
         }
-        return recovered
     }
 
     func discardImport(_ id: UUID, library: LibraryData) throws {
@@ -176,7 +183,7 @@ struct MediaStore {
         let recovery = root.appendingPathComponent("Recovery", isDirectory: true)
         try directory(recovery, protection: .complete)
         try original.write(to: recovery.appendingPathComponent(UUID().uuidString).appendingPathExtension("json"),
-                           options: [.atomic, .completeFileProtection])
+                           options: writingOptions(.complete))
         var restored = (try? read(backupURL, fallback: LibraryData())) ?? LibraryData()
         if fm.fileExists(atPath: media.path) {
             for url in try fm.contentsOfDirectory(at: media, includingPropertiesForKeys: [.isRegularFileKey]) {
@@ -228,7 +235,9 @@ struct MediaStore {
         for case let child as URL in items {
             guard try child.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false,
                   try reference(child).hasPrefix(try reference(url) + "/") else { throw MediaError.storage }
+            #if os(iOS)
             try fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: child.path)
+            #endif
         }
         if let enumerationError { throw enumerationError }
     }
@@ -301,12 +310,20 @@ struct MediaStore {
     }
 
     private func directory(_ url: URL, protection: FileProtectionType) throws {
+        #if os(iOS)
         try fm.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.protectionKey: protection])
+        #else
+        try fm.createDirectory(at: url, withIntermediateDirectories: true)
+        #endif
         try protect(url, protection)
     }
 
     private func protect(_ url: URL, _ protection: FileProtectionType) throws {
+        #if os(iOS)
         try fm.setAttributes([.protectionKey: protection], ofItemAtPath: url.path)
+        #else
+        guard fm.fileExists(atPath: url.path) else { throw CocoaError(.fileNoSuchFile) }
+        #endif
         try exclude(url)
     }
 

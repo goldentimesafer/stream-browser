@@ -125,7 +125,7 @@ final class DownloadCenter: ObservableObject {
             }
             try loadJournal()
             reconcileCancelledJobs()
-            library = try store.recoverImports(library, excluding: Set(jobs.filter { $0.value.cancelled }.keys))
+            try store.recoverImports(&library, excluding: Set(jobs.filter { $0.value.cancelled }.keys))
             for id in library.media.map(\.id) {
                 rows.removeAll { $0.id == id }
                 requests[id] = nil
