@@ -114,7 +114,7 @@ struct LibraryScreen: View {
                 Text(bytes > 0 ? "확인된 일반 영상 용량 \(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))" : "선택한 영상과 재생 기록을 정리합니다.")
             }
             .alert("영상 이름 변경", isPresented: $showRename) {
-                TextField("이름", text: $renameValue)
+                TextField("이름", text: $renameValue).autocorrectionDisabled()
                 Button("저장") {
                     if let id = renameItem?.id {
                         center.modifyLibrary { data in

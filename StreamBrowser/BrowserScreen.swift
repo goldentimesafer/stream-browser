@@ -45,6 +45,7 @@ struct BrowserScreen: View {
             if showFind, let tab = browser.tab {
                 HStack {
                     TextField("페이지에서 찾기", text: $findText).submitLabel(.search)
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
                         .onSubmit { find(in: tab.view) }
                     Button("찾기") { find(in: tab.view) }
                     if let findResult { Text(findResult).font(.caption) }

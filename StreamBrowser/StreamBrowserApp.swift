@@ -73,6 +73,17 @@ struct BrowserRoot: View {
     @State private var transientReset = UUID()
     @State private var privacyCover = false
 
+    /// Whether unlocking requires authentication. Release builds read only the saved setting, so a
+    /// `-appLockEnabled NO` launch argument (which UserDefaults otherwise honours) cannot switch the lock off.
+    private var requiresAuthentication: Bool {
+        #if DEBUG
+        return lockEnabled
+        #else
+        let saved = UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["appLockEnabled"]
+        return (saved as? Bool) ?? true
+        #endif
+    }
+
     var body: some View {
         ZStack {
             if locked {
@@ -170,7 +181,9 @@ struct BrowserRoot: View {
             }), titleVisibility: .visible) {
             Button("저장") { downloads.answerWebOffer(save: true) }
             Button("취소", role: .cancel) { downloads.answerWebOffer(save: false) }
-        } message: { Text("현재 탭의 웹 세션에서 영상을 내려받습니다. 저장한 영상은 세션을 닫은 뒤에도 기기에 남습니다.") }
+        } message: {
+            Text("출처: \(downloads.webOfferHost ?? "알 수 없음")\n현재 탭의 웹 세션에서 영상을 내려받습니다. 저장한 영상은 세션을 닫은 뒤에도 기기에 남습니다.")
+        }
         .confirmationDialog("이 기기의 Stream Browser 데이터를 삭제할까요?", isPresented: $showErase, titleVisibility: .visible) {
             Button("앱 데이터 삭제", role: .destructive) {
                 Task { @MainActor in
@@ -190,13 +203,13 @@ struct BrowserRoot: View {
         privacyCover = false
         WindowPrivacyCover.setVisible(false)
         downloads.setForeground(true)
-        if !lockEnabled { completeUnlock(); return }
+        if !requiresAuthentication { completeUnlock(); return }
         if !locked { browser.setActive(true); downloads.unlock() }
     }
 
     private func authenticate() {
         guard !authenticating else { return }
-        guard lockEnabled else { completeUnlock(); return }
+        guard requiresAuthentication else { completeUnlock(); return }
         let context = LAContext()
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {

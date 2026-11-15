@@ -62,6 +62,8 @@ final class DownloadCenter: ObservableObject {
     @Published private(set) var rows: [DownloadRow] = []
     @Published var notice: String?
     @Published private(set) var webOffer: UUID?
+    /// Host of the pending web save, shown in the confirmation so the user can see which site is downloading.
+    var webOfferHost: String? { webOffer.flatMap { requests[$0]?.host } }
     @Published private(set) var libraryRecoveryRequired = false
     @Published private(set) var isErasing = false
     private(set) var unlocked = false
