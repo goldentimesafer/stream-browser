@@ -250,8 +250,12 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
         return urls;
         """
-        guard let result = try? await current.view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .defaultClient),
-              let values = result as? [String], active, tab?.id == current.id, current.view.url == page else { return [] }
+        let result: Any? = try? await withCheckedThrowingContinuation { (reply: CheckedContinuation<Any, Error>) in
+            current.view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .defaultClient) { result in
+                reply.resume(with: result)
+            }
+        }
+        guard let values = result as? [String], active, tab?.id == current.id, current.view.url == page else { return [] }
         var seen = Set<URL>()
         return values.compactMap { text in
             guard text.utf8.count <= 4096, let url = URL(string: text), MediaPolicy.secureWebURL(url),

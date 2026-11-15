@@ -14,7 +14,7 @@ swiftc "$root/StreamBrowser/MediaPolicy.swift" "$root/StreamBrowser/MediaStore.s
 
 xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
   -configuration Release -destination 'generic/platform=iOS' \
-  -derivedDataPath "$output/DerivedData" CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath "$output/DerivedData" CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
 
 package="$(mktemp -d "$output/package.XXXXXXXX")"
 trap 'rm -rf -- "$package"' EXIT

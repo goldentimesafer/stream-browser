@@ -38,7 +38,7 @@ jobs:
           xcrun simctl launch "$SCREEN_SIMULATOR" local.streambrowser.ios
           sleep 8
           xcrun simctl io "$SCREEN_SIMULATOR" screenshot build/screenshots/startup.png
-          xcrun simctl terminate "$SCREEN_SIMULATOR" local.streambrowser.ios
+          xcrun simctl terminate "$SCREEN_SIMULATOR" local.streambrowser.ios || true
       - name: Navigate the app and capture its screens
         run: |
           xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
@@ -70,4 +70,24 @@ jobs:
           name: StreamBrowser-screenshots
           path: build/screenshots/*.png
           if-no-files-found: error
+          retention-days: 7
+      - name: Collect simulator launch diagnostics
+        if: always()
+        run: |
+          mkdir -p build/diagnostics
+          if [[ -n "${SCREEN_SIMULATOR:-}" ]]; then
+            xcrun simctl spawn "$SCREEN_SIMULATOR" log show --last 15m --style compact \
+              --predicate 'process == "StreamBrowser"' > build/diagnostics/app.log 2>&1 || true
+          fi
+          for folder in "$HOME/Library/Logs/DiagnosticReports" "$HOME/Library/Developer/CoreSimulator/Devices/${SCREEN_SIMULATOR:-missing}/data/Library/Logs/CrashReporter"; do
+            if [[ -d "$folder" ]]; then
+              find "$folder" -type f -name 'StreamBrowser*' -exec cp {} build/diagnostics/ \;
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: StreamBrowser-simulator-diagnostics
+          path: build/diagnostics/
+          if-no-files-found: warn
           retention-days: 7
