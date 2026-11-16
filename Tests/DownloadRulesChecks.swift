@@ -30,7 +30,8 @@ struct DownloadRulesChecks {
         precondition(DownloadRules.startable(rows: rows, activeCount: 0, requested: requested) == [oldest.id, middle.id])
         precondition(DownloadRules.startable(rows: rows, activeCount: 1, requested: requested) == [oldest.id])
         precondition(DownloadRules.startable(rows: rows, activeCount: 2, requested: requested).isEmpty)
-        precondition(DownloadRules.startable(rows: rows, activeCount: 0, requested: [orphan.id]).isEmpty)
+        precondition(DownloadRules.startable(rows: rows, activeCount: 0, requested: [orphan.id]) == [orphan.id],
+                     "a queued row starts only once its request exists")
 
         // Relaunch: attach only to live, unfinished, uncancelled jobs; restore the paused intent.
         precondition(DownloadRules.restoreAction(job: nil, inLibrary: false) == .cancel)
