@@ -4,7 +4,9 @@ final class ScreenCaptureTests: XCTestCase {
     @MainActor
     func testCaptureMainScreens() {
         let app = XCUIApplication()
-        app.launchArguments = ["-onboardingDone", "NO"]
+        // No launch arguments here: an argument-domain value would override the preference the
+        // "시작" button writes, so the welcome screen could never be dismissed. A fresh simulator
+        // starts with onboardingDone unset.
         app.launch()
         let start = app.buttons["시작"]
         if start.waitForExistence(timeout: 30) {
