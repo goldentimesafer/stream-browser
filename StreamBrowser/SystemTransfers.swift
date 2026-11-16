@@ -3,10 +3,23 @@ import Foundation
 import UserNotifications
 
 final class SystemTransferDelegate: NSObject, AVAssetDownloadDelegate, URLSessionDownloadDelegate {
+    // The iOS 26 SDK (Swift 6.2) declares this completion handler @Sendable; the iOS 18.5 SDK
+    // (Swift 6.1) does not, and a mismatch is a warning that the build treats as an error.
+    #if compiler(>=6.2)
     func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
                     completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let method = challenge.protectionSpace.authenticationMethod
-        completionHandler(method == NSURLAuthenticationMethodServerTrust ? .performDefaultHandling : .cancelAuthenticationChallenge, nil)
+        completionHandler(Self.disposition(for: challenge), nil)
+    }
+    #else
+    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        completionHandler(Self.disposition(for: challenge), nil)
+    }
+    #endif
+
+    /// Only server-trust (TLS) challenges proceed; the app never answers credential prompts.
+    private static func disposition(for challenge: URLAuthenticationChallenge) -> URLSession.AuthChallengeDisposition {
+        challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust ? .performDefaultHandling : .cancelAuthenticationChallenge
     }
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
