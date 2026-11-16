@@ -3,11 +3,12 @@ import Foundation
 import UserNotifications
 
 final class SystemTransferDelegate: NSObject, AVAssetDownloadDelegate, URLSessionDownloadDelegate {
-    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        let method = challenge.protectionSpace.authenticationMethod
-        completionHandler(method == NSURLAuthenticationMethodServerTrust ? .performDefaultHandling : .cancelAuthenticationChallenge, nil)
-    }
+    // No urlSession(_:task:didReceive:completionHandler:) override: the iOS 18.5 and iOS 26 SDKs
+    // disagree on its closure's sendability and the warning is fatal under warnings-as-errors.
+    // Default handling gives the same result because the sessions are built with
+    // urlCredentialStorage = nil (PublicSourceCheck.configuration): TLS challenges go through
+    // system trust evaluation and credential challenges fail with 401, which is reported as
+    // MediaError.authentication. The app never supplies a credential either way.
 
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         MainActor.assumeIsolated { DownloadCenter.shared.receiveFile(downloadTask, temporary: location) }

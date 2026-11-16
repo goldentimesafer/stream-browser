@@ -113,8 +113,8 @@ struct BrowserScreen: View {
                                 browser.select(tab.id); panel = nil
                             } label: {
                                 VStack(alignment: .leading) {
-                                    Text(tab.view.title ?? "새 탭")
-                                    if let host = tab.view.url?.host { Text(host).font(.caption).foregroundStyle(.secondary) }
+                                    Text(tab.displayTitle)
+                                    if let host = tab.displayHost { Text(host).font(.caption).foregroundStyle(.secondary) }
                                 }
                             }
                             .swipeActions { Button("닫기", role: .destructive) { browser.close(tab.id) } }

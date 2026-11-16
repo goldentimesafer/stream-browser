@@ -72,7 +72,7 @@
 권장: 검증계획 §6의 B01~B03, H01~H05와 수정검증 v1.3의 "iPhone 인수 확인" 표를 그대로 실행하고 결과를 `docs/`에 기록한다. 이것이 끝나기 전에는 기능을 더 추가하지 않는 것이 좋다.
 
 ### P1 — 앱 완성도
-> 2026-11-16 조치: 1·2번과 P2-1(상태 열거형)은 PR #4, 3번(큐·복원 규칙 검사)과 6번(로컬 진단)은 PR #5에서 처리했다. 4·5번은 남아 있다. 3번은 `DownloadCenter`의 결정 로직을 `DownloadRules`로 분리해 검사하는 방식이며, WebKit·AVFoundation과 맞물리는 부분은 여전히 실기기 확인 대상이다.
+> 2026-11-16 조치: 1·2번과 P2-1(상태 열거형)은 PR #4, 3번(큐·복원 규칙 검사)과 6번(로컬 진단)은 PR #5, 5번(메모리 경고)과 P2-2·3·6(싱글턴, Swift 6 경고, 도구 체인)은 PR #6에서 처리했다. 4번은 실기기가 필요해 남아 있다. 3번은 `DownloadCenter`의 결정 로직을 `DownloadRules`로 분리해 검사하는 방식이며, WebKit·AVFoundation과 맞물리는 부분은 여전히 실기기 확인 대상이다.
 
 1. **앱 아이콘이 없다.** `Assets.xcassets` 자체가 없어 홈 화면에 빈 격자 아이콘으로 표시된다(스크린샷 `startup.png`에서 확인). `AppIcon`과 `AccentColor`를 담은 에셋 카탈로그를 추가하고 프로젝트에 리소스로 등록해야 한다.
 2. **버전이 한 번도 올라가지 않았다.** PR 3개를 병합했지만 `MARKETING_VERSION 0.1.0`, `CURRENT_PROJECT_VERSION 1` 그대로다. 기기에서 어떤 빌드가 설치됐는지 구분할 수 없고, 일부 사이드로드 도구는 같은 버전을 갱신으로 보지 않는다. CI에서 `CURRENT_PROJECT_VERSION=$GITHUB_RUN_NUMBER`를 주입하고, 기능 변경 시 `MARKETING_VERSION`을 올린다.
