@@ -48,8 +48,15 @@ struct MediaStore {
     private var jobsURL: URL { staging.appendingPathComponent("jobs.json") }
     private var imports: URL { root.appendingPathComponent("Imports", isDirectory: true) }
     private var backupURL: URL { root.appendingPathComponent("library-backup.json") }
+    private var diagnosticsURL: URL { root.appendingPathComponent("diagnostics.json") }
 
     func readLibrary() throws -> LibraryData { try read(libraryURL, fallback: LibraryData()) }
+    func readDiagnostics() throws -> [DiagnosticEntry] { try read(diagnosticsURL, fallback: []) }
+    /// Failures can arrive while the device is locked, so this file is readable after first unlock.
+    func writeDiagnostics(_ entries: [DiagnosticEntry]) throws {
+        try write(entries, to: diagnosticsURL, protection: .completeUntilFirstUserAuthentication)
+    }
+    func removeDiagnostics() throws { try remove(diagnosticsURL) }
     func readJobs() throws -> [UUID: SystemJob] { try read(jobsURL, fallback: [:]) }
     func writeLibrary(_ data: LibraryData) throws {
         // Mirror the new index, not the previous one: deleted metadata must not

@@ -51,6 +51,22 @@ struct SettingsScreen: View {
                 Section { Button(center.isErasing ? "삭제 처리 중…" : "앱 데이터 삭제", role: .destructive, action: erase)
                         .disabled(center.isErasing || center.libraryRecoveryRequired) }
                 Section {
+                    if center.diagnostics.isEmpty {
+                        Text("기록된 다운로드 실패가 없습니다.").foregroundStyle(.secondary)
+                    }
+                    ForEach(center.diagnostics) { entry in
+                        VStack(alignment: .leading) {
+                            Text(entry.mode.label + " · " + entry.code)
+                            Text(entry.date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    if !center.diagnostics.isEmpty {
+                        Button("진단 기록 지우기", role: .destructive) { center.clearDiagnostics() }
+                    }
+                } header: { Text("다운로드 진단") } footer: {
+                    Text("최근 \(DiagnosticLog.limit)건의 실패 오류 코드와 저장 방식만 기록합니다. 주소·호스트·파일 이름은 저장하지 않습니다.")
+                }
+                Section {
                     LabeledContent("버전", value: Self.versionLabel)
                 } footer: { Text("괄호 안은 GitHub Actions 빌드 번호입니다. 설치된 빌드를 구분할 때 사용합니다.") }
             }
