@@ -3,41 +3,6 @@ import SwiftUI
 import UIKit
 import WebKit
 
-/// Where a download is in its life cycle. The queue logic switches on these cases;
-/// `label` is only for display, so wording changes cannot break the state machine.
-enum DownloadState: Equatable {
-    case queued, awaitingResponse, checkingSource, reconnecting, systemDownloading, paused
-    case downloading, awaitingImport, awaitingUnlock, awaitingRecovery, validating, failed
-
-    var label: String {
-        switch self {
-        case .queued: "대기 중"
-        case .awaitingResponse: "응답 대기"
-        case .checkingSource: "출처 확인 중"
-        case .reconnecting: "시스템 작업 확인 중"
-        case .systemDownloading: "시스템에서 다운로드 중"
-        case .paused: "일시정지"
-        case .downloading: "다운로드 중"
-        case .awaitingImport: "저장 확인 대기"
-        case .awaitingUnlock: "잠금 해제 후 저장 확인"
-        case .awaitingRecovery: "저장 복구 대기"
-        case .validating: "재생 확인 중"
-        case .failed: "실패"
-        }
-    }
-}
-
-struct DownloadRow: Identifiable {
-    let id: UUID
-    let mode: TransferMode
-    var name: String
-    var state = DownloadState.queued
-    var progress: Double?
-    var bytes: Int64 = 0
-    var failure: String?
-    var paused = false
-}
-
 struct HLSDownloadOptions {
     var maximumHeight = 0
     var audioLanguage = ""
@@ -90,6 +55,9 @@ final class DownloadCenter: ObservableObject {
     var webOfferHost: String? { webOffer.flatMap { requests[$0]?.host } }
     @Published private(set) var libraryRecoveryRequired = false
     @Published private(set) var isErasing = false
+    /// Recent download failures (code and mode only), newest first.
+    @Published private(set) var diagnostics: [DiagnosticEntry] = []
+    private var diagnosticsLoaded = false
     private(set) var unlocked = false
     private var opened = false
     private var foreground = false
@@ -151,6 +119,7 @@ final class DownloadCenter: ObservableObject {
                 }
             }
             try loadJournal()
+            loadDiagnostics()
             reconcileCancelledJobs()
             try store.recoverImports(&library, excluding: Set(jobs.filter { $0.value.cancelled }.keys))
             for id in library.media.map(\.id) {
@@ -178,6 +147,25 @@ final class DownloadCenter: ObservableObject {
             unlock()
             notice = "저장 목록을 복구했습니다. 일부 이름이나 북마크는 백업 시점으로 돌아갈 수 있습니다."
         } catch { notice = "목록을 복구하지 못했습니다. 원본은 보존되어 있습니다. 저장공간과 기기 잠금 상태를 확인하세요." }
+    }
+
+    private func loadDiagnostics() {
+        guard !diagnosticsLoaded, let stored = try? store.readDiagnostics() else { return }
+        diagnostics = stored
+        diagnosticsLoaded = true
+    }
+
+    private func recordFailure(_ error: MediaError, mode: TransferMode) {
+        loadDiagnostics()
+        diagnostics = DiagnosticLog.appending(error, mode: mode, to: diagnostics)
+        // Best effort: a full disk must not turn a recorded failure into a second one.
+        try? store.writeDiagnostics(diagnostics)
+    }
+
+    func clearDiagnostics() {
+        diagnostics = []
+        diagnosticsLoaded = true
+        do { try store.removeDiagnostics() } catch { notice = MediaError.storage.message }
     }
 
     private func loadJournal() throws {
@@ -225,20 +213,23 @@ final class DownloadCenter: ObservableObject {
             let streamTasks = await streams.allTasks
             let live = fileTasks + streamTasks
             for task in live {
-                guard let id = jobID(task), let job = jobs[id], !job.ready,
-                      !library.media.contains(where: { $0.id == id }) else { task.cancel(); continue }
-                systemTasks[id] = task
-                if job.cancelled { task.cancel(); continue }
+                guard let id = jobID(task) else { task.cancel(); continue }
+                let job = jobs[id]
+                let inLibrary = library.media.contains { $0.id == id }
+                let action = DownloadRules.restoreAction(job: job, inLibrary: inLibrary)
+                // A cancelled job keeps its task registered so the completion callback can discard it.
+                if let job, !job.ready, !inLibrary { systemTasks[id] = task }
+                guard case .attach(let paused) = action, let job else { task.cancel(); continue }
                 ensureRow(id, mode: job.mode)
-                if job.paused == true && task.state == .running { task.suspend() }
-                if job.paused != true && task.state == .suspended { task.resume() }
-                update(id) { $0.paused = job.paused == true; $0.state = $0.paused ? .paused : .systemDownloading }
+                if paused && task.state == .running { task.suspend() }
+                if !paused && task.state == .suspended { task.resume() }
+                update(id) { $0.paused = paused; $0.state = paused ? .paused : .systemDownloading }
             }
             restoring = false
             reconcileCancelledJobs()
             processReadyJobs()
             pump()
-            for (id, job) in jobs where systemTasks[id] == nil && !job.ready && !job.cancelled {
+            for id in DownloadRules.interruptedJobs(jobs, liveTasks: Set(systemTasks.keys)) {
                 // Keep the journal entry for any completion event already in flight.
                 fail(id, .interrupted)
             }
@@ -247,13 +238,13 @@ final class DownloadCenter: ObservableObject {
 
     func enqueue(_ url: URL, mode: TransferMode, webView: WKWebView? = nil, options: HLSDownloadOptions = HLSDownloadOptions()) {
         guard unlocked, foreground, libraryLoaded, journalLoaded, !isErasing else { return }
-        guard MediaPolicy.secureWebURL(url) else { notice = MediaError.address.message; return }
-        if mode.usesSystemSession, !MediaPolicy.publicURL(url, hosts: library.publicHosts) {
-            notice = MediaError.untrustedSource.message
-            return
+        switch DownloadRules.enqueueRejection(url, mode: mode, publicHosts: library.publicHosts, pending: requests.values, rows: rows) {
+        case .address: notice = MediaError.address.message; return
+        case .untrustedSource: notice = MediaError.untrustedSource.message; return
+        case .duplicate: notice = "이 주소는 이미 대기 중이거나 다운로드 중입니다."; return
+        case .busy: notice = MediaError.busy.message; return
+        case nil: break
         }
-        if requests.values.contains(url) { notice = "이 주소는 이미 대기 중이거나 다운로드 중입니다."; return }
-        guard rows.filter({ $0.failure == nil }).count < 20 else { notice = MediaError.busy.message; return }
         let id = UUID()
         requests[id] = url
         if mode == .hls { hlsOptions[id] = options }
@@ -280,7 +271,7 @@ final class DownloadCenter: ObservableObject {
         guard unlocked, foreground, opened,
               let url = download.originalRequest?.url, MediaPolicy.secureWebURL(url),
               url.host?.lowercased() == origin.host?.lowercased(),
-              !requests.values.contains(url), activeCount < 2, !restoring else {
+              !requests.values.contains(url), activeCount < DownloadRules.maxConcurrent, !restoring else {
             download.cancel { _ in }
             notice = "저장 메뉴에서 영상 주소를 확인하고 다시 시도하세요."
             return
@@ -295,10 +286,8 @@ final class DownloadCenter: ObservableObject {
 
     private func pump() {
         guard unlocked, foreground, opened, !restoring, !isErasing else { return }
-        for row in rows.reversed() where row.state == .queued && row.failure == nil {
-            guard activeCount < 2 else { break }
-            guard let url = requests[row.id] else { continue }
-            let id = row.id
+        for id in DownloadRules.startable(rows: rows, activeCount: activeCount, requested: Set(requests.keys)) {
+            guard let url = requests[id], let row = rows.first(where: { $0.id == id }) else { continue }
             if let start = webStarters.removeValue(forKey: id) {
                 startingWeb.insert(id)
                 update(id) { $0.state = .awaitingResponse }
@@ -405,7 +394,7 @@ final class DownloadCenter: ObservableObject {
     func updateProgress(_ task: URLSessionDownloadTask, bytes: Int64, total: Int64) {
         guard let id = jobID(task), jobs[id]?.cancelled == false else { return }
         update(id) { $0.bytes = bytes; $0.progress = total > 0 ? min(1, Double(bytes) / Double(total)) : nil }
-        if bytes - (availableSpaceChecks[id] ?? 0) >= 16 * 1024 * 1024 {
+        if DownloadRules.spaceCheckDue(bytes: bytes, lastChecked: availableSpaceChecks[id]) {
             availableSpaceChecks[id] = bytes
             do { try store.reserve(bytes: nil) }
             catch { cancel(id); notice = MediaError.storage.message }
@@ -419,7 +408,7 @@ final class DownloadCenter: ObservableObject {
                 $0.bytes = progress.completedUnitCount
                 $0.progress = progress.totalUnitCount > 0 ? min(1, progress.fractionCompleted) : nil
             }
-            if progress.completedUnitCount - (availableSpaceChecks[id] ?? 0) >= 16 * 1024 * 1024 {
+            if DownloadRules.spaceCheckDue(bytes: progress.completedUnitCount, lastChecked: availableSpaceChecks[id]) {
                 availableSpaceChecks[id] = progress.completedUnitCount
                 do { try store.reserve(bytes: nil) }
                 catch { cancel(id); notice = MediaError.storage.message }
@@ -447,7 +436,7 @@ final class DownloadCenter: ObservableObject {
         guard let id = jobID(task), jobs[id]?.cancelled == false else { return }
         let duration = expected.duration.seconds
         let received = loaded.reduce(0.0) { $0 + $1.timeRangeValue.duration.seconds }
-        update(id) { $0.progress = duration.isFinite && duration > 0 && received.isFinite ? min(1, max(0, received / duration)) : nil }
+        update(id) { $0.progress = DownloadRules.hlsProgress(received: received, duration: duration) }
         enforceSpaceBudget()
     }
 
@@ -470,7 +459,7 @@ final class DownloadCenter: ObservableObject {
     }
 
     func canPause(_ id: UUID) -> Bool {
-        systemTasks[id] != nil && jobs[id]?.ready == false && jobs[id]?.cancelled == false
+        DownloadRules.canPause(hasTask: systemTasks[id] != nil, job: jobs[id])
     }
 
     private func attachWebDownload(_ download: WKDownload, id: UUID, expected: URL, requiresConfirmation: Bool = false) {
@@ -595,6 +584,7 @@ final class DownloadCenter: ObservableObject {
     }
 
     private func fail(_ id: UUID, _ error: MediaError) {
+        if let mode = rows.first(where: { $0.id == id })?.mode ?? jobs[id]?.mode { recordFailure(error, mode: mode) }
         requests[id] = nil
         hlsOptions[id] = nil
         startingWeb.remove(id)
@@ -718,7 +708,8 @@ final class DownloadCenter: ObservableObject {
         // Cancellation completion owns the final system package location.
         // Do not claim erasure while a system transfer can still write files.
         for _ in 0..<25 {
-            if !restoring && systemTasks.isEmpty && startingWeb.isEmpty && stoppingWeb.isEmpty { break }
+            if DownloadRules.eraseMayProceed(restoring: restoring, systemTasks: systemTasks.count,
+                                             startingWeb: startingWeb.count, stoppingWeb: stoppingWeb.count) { break }
             do { try await Task.sleep(for: .milliseconds(200)) } catch { return false }
         }
         reconcileCancelledJobs()
@@ -733,6 +724,8 @@ final class DownloadCenter: ObservableObject {
             try store.removeTemporaryFiles()
             try save(LibraryData())
             try store.removeRecoveryCopies()
+            try store.removeDiagnostics()
+            diagnostics = []
             return true
         } catch {
             notice = MediaError.storage.message

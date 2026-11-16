@@ -11,6 +11,9 @@ swiftc "$root/StreamBrowser/MediaPolicy.swift" "$root/Tests/MediaPolicyChecks.sw
 swiftc "$root/StreamBrowser/MediaPolicy.swift" "$root/StreamBrowser/MediaStore.swift" \
   "$root/Tests/MediaStoreChecks.swift" -o "$output/media-store-checks"
 "$output/media-store-checks"
+swiftc "$root/StreamBrowser/MediaPolicy.swift" "$root/StreamBrowser/MediaStore.swift" \
+  "$root/StreamBrowser/DownloadRules.swift" "$root/Tests/DownloadRulesChecks.swift" -o "$output/download-rules-checks"
+"$output/download-rules-checks"
 
 xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
   -configuration Release -destination 'generic/platform=iOS' \

@@ -14,6 +14,7 @@
     000000000000000000000020 /* PublicSourceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000001F; };
     000000000000000000000022 /* SettingsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000021; };
     000000000000000000000024 /* StreamBrowserApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000023; };
+    00000000000000000000003D /* DownloadRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000003C; };
     000000000000000000000026 /* SystemTransfers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000025; };
     000000000000000000000012 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000011; };
     00000000000000000000003B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 00000000000000000000003A; };
@@ -30,6 +31,7 @@
     00000000000000000000001F /* PublicSourceCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicSourceCheck.swift; sourceTree = "<group>"; };
     000000000000000000000021 /* SettingsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsScreen.swift; sourceTree = "<group>"; };
     000000000000000000000023 /* StreamBrowserApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamBrowserApp.swift; sourceTree = "<group>"; };
+    00000000000000000000003C /* DownloadRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadRules.swift; sourceTree = "<group>"; };
     000000000000000000000025 /* SystemTransfers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTransfers.swift; sourceTree = "<group>"; };
     000000000000000000000010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
     000000000000000000000011 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -42,7 +44,7 @@
 /* End PBXFrameworksBuildPhase section */
 /* Begin PBXGroup section */
     000000000000000000000003 = {isa = PBXGroup; children = (000000000000000000000004, 000000000000000000000033, 000000000000000000000005); sourceTree = "<group>"; };
-    000000000000000000000004 = {isa = PBXGroup; children = (000000000000000000000013, 000000000000000000000015, 000000000000000000000017, 000000000000000000000019, 00000000000000000000001B, 00000000000000000000001D, 00000000000000000000001F, 000000000000000000000021, 000000000000000000000023, 000000000000000000000025, 000000000000000000000010, 000000000000000000000011, 00000000000000000000003A); path = StreamBrowser; sourceTree = "<group>"; };
+    000000000000000000000004 = {isa = PBXGroup; children = (000000000000000000000013, 000000000000000000000015, 000000000000000000000017, 000000000000000000000019, 00000000000000000000001B, 00000000000000000000001D, 00000000000000000000001F, 000000000000000000000021, 000000000000000000000023, 000000000000000000000025, 00000000000000000000003C, 000000000000000000000010, 000000000000000000000011, 00000000000000000000003A); path = StreamBrowser; sourceTree = "<group>"; };
     000000000000000000000005 = {isa = PBXGroup; children = (000000000000000000000006, 000000000000000000000032); name = Products; sourceTree = "<group>"; };
     000000000000000000000033 = {isa = PBXGroup; children = (000000000000000000000030); path = Tests; sourceTree = "<group>"; };
 /* End PBXGroup section */
@@ -67,7 +69,7 @@
     000000000000000000000009 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000012, 00000000000000000000003B); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXResourcesBuildPhase section */
 /* Begin PBXSourcesBuildPhase section */
-    000000000000000000000007 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000014, 000000000000000000000016, 000000000000000000000018, 00000000000000000000001A, 00000000000000000000001C, 00000000000000000000001E, 000000000000000000000020, 000000000000000000000022, 000000000000000000000024, 000000000000000000000026); runOnlyForDeploymentPostprocessing = 0; };
+    000000000000000000000007 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000014, 000000000000000000000016, 000000000000000000000018, 00000000000000000000001A, 00000000000000000000001C, 00000000000000000000001E, 000000000000000000000020, 000000000000000000000022, 000000000000000000000024, 000000000000000000000026, 00000000000000000000003D); runOnlyForDeploymentPostprocessing = 0; };
     000000000000000000000035 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (000000000000000000000031); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 /* Begin PBXTargetDependency section */
