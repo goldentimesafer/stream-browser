@@ -31,6 +31,15 @@ struct SystemJob: Codable {
     var paused: Bool?
 }
 
+/// One failed download, kept so a user can see why transfers fail on a device without any
+/// logging. Only the error code and mode are stored: never the URL, host, or file name.
+struct DiagnosticEntry: Codable, Identifiable, Equatable {
+    let id: UUID
+    let date: Date
+    let mode: TransferMode
+    let code: String
+}
+
 struct PendingImport: Codable {
     let source: String
     let item: SavedMedia

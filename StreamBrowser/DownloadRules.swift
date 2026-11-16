@@ -101,15 +101,6 @@ enum DownloadRules {
     }
 }
 
-/// One failed download, kept so a user can see why transfers fail on a device without any
-/// logging. Only the error code and mode are stored: never the URL, host, or file name.
-struct DiagnosticEntry: Codable, Identifiable, Equatable {
-    let id: UUID
-    let date: Date
-    let mode: TransferMode
-    let code: String
-}
-
 enum DiagnosticLog {
     static let limit = 50
 
