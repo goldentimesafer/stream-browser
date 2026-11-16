@@ -9,6 +9,11 @@ final class BrowserTab: Identifiable {
     var observations: [NSKeyValueObservation] = []
     /// Requests the desktop version of pages in this tab only.
     var desktopMode = false
+    /// Page released on a memory warning; reloaded when the tab is selected again.
+    var unloaded: (url: URL, title: String?)?
+
+    var displayTitle: String { unloaded?.title ?? view.title ?? "새 탭" }
+    var displayHost: String? { (unloaded?.url ?? view.url)?.host }
 
     init(store: WKWebsiteDataStore, rules: WKContentRuleList?) {
         let configuration = WKWebViewConfiguration()
@@ -39,8 +44,29 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     private var active = false
     private var webDialog: UIAlertController?
     private var dialogReply: ((Bool, String?) -> Void)?
+    private let center: DownloadCenter
+    private var memoryObserver: NSObjectProtocol?
+
+    init(center: DownloadCenter) {
+        self.center = center
+        super.init()
+        memoryObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.releaseBackgroundTabs() } }
+    }
 
     var tab: BrowserTab? { tabs.first { $0.id == selection } }
+
+    /// Frees the web content of every tab except the selected one. Form input and playback
+    /// state in those tabs are lost (spec §12); the address and title are kept for the tab list.
+    private func releaseBackgroundTabs() {
+        for item in tabs where item.id != selection && item.unloaded == nil {
+            guard let url = item.view.url, url.absoluteString != "about:blank" else { continue }
+            item.unloaded = (url, item.view.title)
+            item.view.stopLoading()
+            item.view.load(URLRequest(url: URL(string: "about:blank")!))
+        }
+    }
 
     /// WebKit link-menu actions that would persist the URL in Safari's Reading List or open it in another app.
     private static let leakingMenuActions: Set<String> = [
@@ -91,7 +117,7 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func newTab(url: URL? = nil) {
-        guard tabs.count < 20 else { DownloadCenter.shared.notice = "탭은 20개까지 열 수 있습니다."; return }
+        guard tabs.count < 20 else { center.notice = "탭은 20개까지 열 수 있습니다."; return }
         let item = BrowserTab(store: store, rules: rules)
         item.view.navigationDelegate = self
         item.view.uiDelegate = self
@@ -118,6 +144,10 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
         }
         selection = id
         tab?.view.setAllMediaPlaybackSuspended(!active, completionHandler: nil)
+        if let tab, let unloaded = tab.unloaded {
+            tab.unloaded = nil
+            load(unloaded.url)
+        }
     }
 
     func close(_ id: UUID) {
@@ -135,7 +165,7 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
     }
 
     func clear() {
-        DownloadCenter.shared.stopPrivateTransfers()
+        center.stopPrivateTransfers()
         for id in tabs.map(\.id) { close(id) }
         exceptionHosts.removeAll()
         store = .nonPersistent()
@@ -251,12 +281,12 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
         let source = navigationAction.sourceFrame.request.url
-        if let source { DownloadCenter.shared.acceptWebDownload(download, origin: source) }
+        if let source { center.acceptWebDownload(download, origin: source) }
         else { download.cancel { _ in } }
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
-        if let source = navigationResponse.response.url { DownloadCenter.shared.acceptWebDownload(download, origin: source) }
+        if let source = navigationResponse.response.url { center.acceptWebDownload(download, origin: source) }
         else { download.cancel { _ in } }
     }
 
@@ -297,12 +327,12 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard (error as NSError).code != NSURLErrorCancelled else { return }
-        DownloadCenter.shared.notice = "페이지를 열 수 없습니다. HTTPS 주소와 연결 상태를 확인하세요."
+        center.notice = "페이지를 열 수 없습니다. HTTPS 주소와 연결 상태를 확인하세요."
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         if webView === tab?.view { dismissWebDialog() }
-        DownloadCenter.shared.notice = "페이지가 중단되었습니다. 새로고침해 다시 열 수 있습니다."
+        center.notice = "페이지가 중단되었습니다. 새로고침해 다시 열 수 있습니다."
     }
 
     func detectedMedia() async -> [URL] {

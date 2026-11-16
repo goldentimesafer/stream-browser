@@ -8,7 +8,8 @@ struct HLSDownloadOptions {
     var audioLanguage = ""
     var subtitleLanguage = ""
 
-    func configuration(for url: URL) async throws -> AVAssetDownloadConfiguration {
+    /// Runs on the main actor so the non-Sendable configuration never crosses an isolation boundary.
+    @MainActor func configuration(for url: URL) async throws -> AVAssetDownloadConfiguration {
         let asset = AVURLAsset(url: url, options: [
             AVURLAssetAllowsCellularAccessKey: false,
             AVURLAssetHTTPCookiesKey: [HTTPCookie](),

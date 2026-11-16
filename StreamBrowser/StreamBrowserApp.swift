@@ -59,7 +59,7 @@ enum BrowserSection: String, CaseIterable {
 
 struct BrowserRoot: View {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var browser = PrivateBrowser()
+    @StateObject private var browser = PrivateBrowser(center: DownloadCenter.shared)
     @StateObject private var downloads = DownloadCenter.shared
     @AppStorage("appLockEnabled") private var lockEnabled = true
     @State private var locked = true

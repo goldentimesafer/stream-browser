@@ -15,8 +15,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-26-intel
-    timeout-minutes: 25
+    # Same runner and Xcode as ios-screenshots.yml, so the installed binary and the
+    # simulator-verified binary come from one toolchain (iOS 18.5 SDK).
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
       - uses: actions/checkout@v7
         with:
