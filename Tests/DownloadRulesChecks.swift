@@ -78,11 +78,14 @@ struct DownloadRulesChecks {
         let home = FileManager.default.temporaryDirectory.appendingPathComponent("StreamBrowser-rules-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: home) }
         let store = MediaStore(home: home)
-        precondition(try store.readDiagnostics().isEmpty)
+        let before = try store.readDiagnostics()
+        precondition(before.isEmpty)
         try store.writeDiagnostics(log)
-        precondition(try store.readDiagnostics() == log)
+        let stored = try store.readDiagnostics()
+        precondition(stored == log)
         try store.removeDiagnostics()
-        precondition(try store.readDiagnostics().isEmpty)
+        let after = try store.readDiagnostics()
+        precondition(after.isEmpty)
 
         print("Download rules checks passed")
     }
