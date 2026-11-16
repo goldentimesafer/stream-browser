@@ -35,7 +35,7 @@ struct LibraryScreen: View {
                         ForEach(center.rows) { row in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(row.name).font(.headline).lineLimit(1)
-                                Text(row.mode.label + " · " + row.state).font(.caption).foregroundStyle(.secondary)
+                                Text(row.mode.label + " · " + row.state.label).font(.caption).foregroundStyle(.secondary)
                                 if let progress = row.progress { ProgressView(value: progress) }
                                 if row.bytes > 0 { Text(ByteCountFormatter.string(fromByteCount: row.bytes, countStyle: .file)).font(.caption) }
                                 if let error = row.failure {

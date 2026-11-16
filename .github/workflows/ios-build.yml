@@ -23,6 +23,9 @@ jobs:
           persist-credentials: false
       - name: Validate media policy, recovery and build unsigned IPA
         run: bash scripts/build-ios.sh
+        env:
+          # Distinguishes installed builds; shown in Settings as 버전 x.y.z (N).
+          BUILD_NUMBER: ${{ github.run_number }}
       - uses: actions/upload-artifact@v7
         with:
           name: StreamBrowser-unsigned

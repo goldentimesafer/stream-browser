@@ -3,11 +3,35 @@ import SwiftUI
 import UIKit
 import WebKit
 
+/// Where a download is in its life cycle. The queue logic switches on these cases;
+/// `label` is only for display, so wording changes cannot break the state machine.
+enum DownloadState: Equatable {
+    case queued, awaitingResponse, checkingSource, reconnecting, systemDownloading, paused
+    case downloading, awaitingImport, awaitingUnlock, awaitingRecovery, validating, failed
+
+    var label: String {
+        switch self {
+        case .queued: "대기 중"
+        case .awaitingResponse: "응답 대기"
+        case .checkingSource: "출처 확인 중"
+        case .reconnecting: "시스템 작업 확인 중"
+        case .systemDownloading: "시스템에서 다운로드 중"
+        case .paused: "일시정지"
+        case .downloading: "다운로드 중"
+        case .awaitingImport: "저장 확인 대기"
+        case .awaitingUnlock: "잠금 해제 후 저장 확인"
+        case .awaitingRecovery: "저장 복구 대기"
+        case .validating: "재생 확인 중"
+        case .failed: "실패"
+        }
+    }
+}
+
 struct DownloadRow: Identifiable {
     let id: UUID
     let mode: TransferMode
     var name: String
-    var state = "대기 중"
+    var state = DownloadState.queued
     var progress: Double?
     var bytes: Int64 = 0
     var failure: String?
@@ -194,7 +218,7 @@ final class DownloadCenter: ObservableObject {
         restoring = true
         for (id, job) in jobs where !job.cancelled && !library.media.contains(where: { $0.id == id }) {
             ensureRow(id, mode: job.mode)
-            update(id) { $0.state = job.ready ? "저장 확인 대기" : "시스템 작업 확인 중" }
+            update(id) { $0.state = job.ready ? .awaitingImport : .reconnecting }
         }
         Task {
             let fileTasks = await files.allTasks
@@ -208,7 +232,7 @@ final class DownloadCenter: ObservableObject {
                 ensureRow(id, mode: job.mode)
                 if job.paused == true && task.state == .running { task.suspend() }
                 if job.paused != true && task.state == .suspended { task.resume() }
-                update(id) { $0.paused = job.paused == true; $0.state = $0.paused ? "일시정지" : "시스템에서 다운로드 중" }
+                update(id) { $0.paused = job.paused == true; $0.state = $0.paused ? .paused : .systemDownloading }
             }
             restoring = false
             reconcileCancelledJobs()
@@ -271,18 +295,18 @@ final class DownloadCenter: ObservableObject {
 
     private func pump() {
         guard unlocked, foreground, opened, !restoring, !isErasing else { return }
-        for row in rows.reversed() where row.state == "대기 중" && row.failure == nil {
+        for row in rows.reversed() where row.state == .queued && row.failure == nil {
             guard activeCount < 2 else { break }
             guard let url = requests[row.id] else { continue }
             let id = row.id
             if let start = webStarters.removeValue(forKey: id) {
                 startingWeb.insert(id)
-                update(id) { $0.state = "응답 대기" }
+                update(id) { $0.state = .awaitingResponse }
                 start()
             } else if row.mode.usesSystemSession {
                 let hosts = library.publicHosts
                 let mode = row.mode
-                update(id) { $0.state = "출처 확인 중" }
+                update(id) { $0.state = .checkingSource }
                 checks[id] = Task {
                     do {
                         let expectedBytes = try await PublicSourceCheck.verify(url, mode: mode, hosts: hosts)
@@ -292,7 +316,7 @@ final class DownloadCenter: ObservableObject {
                         try Task.checkCancellation()
                         checks[id] = nil
                         guard requests[id] != nil else { return }
-                        guard foreground, unlocked else { update(id) { $0.state = "대기 중" }; return }
+                        guard foreground, unlocked else { update(id) { $0.state = .queued }; return }
                         guard library.publicHosts == hosts else { fail(id, .untrustedSource); return }
                         try startSystem(id, url: url, mode: mode, expectedBytes: expectedBytes, configuration: configuration)
                     } catch is CancellationError { }
@@ -319,7 +343,7 @@ final class DownloadCenter: ObservableObject {
         }
         task.taskDescription = id.uuidString
         systemTasks[id] = task
-        update(id) { $0.state = "시스템에서 다운로드 중" }
+        update(id) { $0.state = .systemDownloading }
         task.resume()
     }
 
@@ -374,7 +398,7 @@ final class DownloadCenter: ObservableObject {
             ensureRow(id, mode: job.mode)
             update(id) { $0.failure = nil }
             if unlocked && foreground { processReadyJobs() }
-            else { update(id) { $0.state = "잠금 해제 후 저장 확인" } }
+            else { update(id) { $0.state = .awaitingUnlock } }
         } catch { failSystem(id, .storage) }
     }
 
@@ -441,7 +465,7 @@ final class DownloadCenter: ObservableObject {
             job.paused = !(job.paused ?? false)
             try changeJob(id, to: job)
             if job.paused == true { task.suspend() } else { task.resume() }
-            update(id) { $0.paused = job.paused == true; $0.state = $0.paused ? "일시정지" : "시스템에서 다운로드 중" }
+            update(id) { $0.paused = job.paused == true; $0.state = $0.paused ? .paused : .systemDownloading }
         } catch { notice = MediaError.storage.message }
     }
 
@@ -461,7 +485,7 @@ final class DownloadCenter: ObservableObject {
     func offerWebSave(_ id: UUID) -> Bool {
         guard webOffer == nil, unlocked, foreground, requests[id] != nil else { return false }
         webOffer = id
-        update(id) { $0.state = "저장 확인 대기" }
+        update(id) { $0.state = .awaitingImport }
         return true
     }
 
@@ -478,7 +502,7 @@ final class DownloadCenter: ObservableObject {
               let ext = MediaPolicy.videoExtension(response, suggested: suggested) else { throw MediaError.format }
         try store.reserve(bytes: response.expectedContentLength > 0 ? response.expectedContentLength : nil)
         let name = MediaPolicy.displayName((suggested as NSString).deletingPathExtension)
-        update(id) { $0.name = name; $0.state = "다운로드 중" }
+        update(id) { $0.name = name; $0.state = .downloading }
         return try store.webDestination(id, ext: ext)
     }
 
@@ -517,7 +541,7 @@ final class DownloadCenter: ObservableObject {
 
     private func validate(_ id: UUID, mode: TransferMode, location: URL) {
         let name = rows.first(where: { $0.id == id })?.name ?? "오프라인 영상"
-        update(id) { $0.state = "재생 확인 중" }
+        update(id) { $0.state = .validating }
         validations[id] = Task {
             defer { validations[id] = nil }
             do {
@@ -533,7 +557,7 @@ final class DownloadCenter: ObservableObject {
                 }
                 try Task.checkCancellation()
                 guard unlocked, foreground else {
-                    if mode.usesSystemSession { update(id) { $0.state = "잠금 해제 후 저장 확인" } }
+                    if mode.usesSystemSession { update(id) { $0.state = .awaitingUnlock } }
                     else { try? store.remove(location); fail(id, .interrupted) }
                     return
                 }
@@ -547,11 +571,11 @@ final class DownloadCenter: ObservableObject {
                 if mode == .web && !store.hasPendingImport(id) { try? store.remove(location) }
             } catch {
                 if Task.isCancelled || !foreground || !unlocked {
-                    update(id) { $0.state = "잠금 해제 후 저장 확인" }
+                    update(id) { $0.state = .awaitingUnlock }
                     return
                 }
                 if store.hasPendingImport(id) {
-                    update(id) { $0.state = "저장 복구 대기" }
+                    update(id) { $0.state = .awaitingRecovery }
                     notice = "영상을 보존했습니다. 저장공간을 확보한 뒤 설정에서 저장 작업 복구를 누르세요."
                     return
                 }
@@ -575,7 +599,7 @@ final class DownloadCenter: ObservableObject {
         hlsOptions[id] = nil
         startingWeb.remove(id)
         webStarters[id] = nil
-        update(id) { $0.failure = error.message; $0.state = "실패" }
+        update(id) { $0.failure = error.message; $0.state = .failed }
     }
 
     private func failSystem(_ id: UUID, _ error: MediaError) {
