@@ -14,7 +14,8 @@ swiftc "$root/StreamBrowser/MediaPolicy.swift" "$root/StreamBrowser/MediaStore.s
 
 xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
   -configuration Release -destination 'generic/platform=iOS' \
-  -derivedDataPath "$output/DerivedData" CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build
+  -derivedDataPath "$output/DerivedData" CODE_SIGNING_ALLOWED=NO SWIFT_TREAT_WARNINGS_AS_ERRORS=YES \
+  CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-1}" build
 
 app="$output/DerivedData/Build/Products/Release-iphoneos/StreamBrowser.app"
 # The iOS 18.5 runtime has no libswiftWebKit.dylib; a hard link to it aborts the app at launch.

@@ -50,10 +50,20 @@ struct SettingsScreen: View {
                 }
                 Section { Button(center.isErasing ? "삭제 처리 중…" : "앱 데이터 삭제", role: .destructive, action: erase)
                         .disabled(center.isErasing || center.libraryRecoveryRequired) }
+                Section {
+                    LabeledContent("버전", value: Self.versionLabel)
+                } footer: { Text("괄호 안은 GitHub Actions 빌드 번호입니다. 설치된 빌드를 구분할 때 사용합니다.") }
             }
             .navigationTitle("설정")
             .onAppear { bytes = center.usage() }
         }
+    }
+
+    private static var versionLabel: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
     }
 
     private func addHost() {
