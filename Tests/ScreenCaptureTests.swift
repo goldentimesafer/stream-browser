@@ -4,7 +4,16 @@ final class ScreenCaptureTests: XCTestCase {
     @MainActor
     func testCaptureMainScreens() {
         let app = XCUIApplication()
+        app.launchArguments = ["-onboardingDone", "NO"]
         app.launch()
+        let start = app.buttons["시작"]
+        if start.waitForExistence(timeout: 30) {
+            capture("00-welcome", in: app)
+            start.tap()
+        } else {
+            capture("diagnostic-lock", in: app)
+            XCTFail("Welcome screen missing. App state: \(app.state). \(app.debugDescription)")
+        }
         let unlock = app.buttons["잠금 해제"]
         if unlock.waitForExistence(timeout: 30) {
             capture("01-lock", in: app)
@@ -14,8 +23,8 @@ final class ScreenCaptureTests: XCTestCase {
         }
         app.terminate()
 
-        // Apply the existing preference only to this simulator launch.
-        app.launchArguments = ["-appLockEnabled", "NO"]
+        // Apply the existing preferences only to this simulator launch.
+        app.launchArguments = ["-appLockEnabled", "NO", "-onboardingDone", "YES"]
         app.launch()
         guard show(app.textFields["주소 또는 검색어"]) else { return }
         capture("02-browser", in: app)

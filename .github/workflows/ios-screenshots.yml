@@ -52,7 +52,7 @@ jobs:
           mkdir -p build/screenshots
           xcrun xcresulttool export attachments --path build/Screenshots.xcresult --output-path build/attachments
           missing=0
-          for name in 01-lock 02-browser 03-library 04-settings 05-download diagnostic-lock; do
+          for name in 00-welcome 01-lock 02-browser 03-library 04-settings 05-download diagnostic-lock; do
             if file=$(jq -er --arg name "$name" '
               [.[].attachments[] | select(.suggestedHumanReadableName | startswith($name))
                 | .exportedFileName | select(endswith(".png"))] | first

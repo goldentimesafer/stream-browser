@@ -38,6 +38,29 @@ struct BrowserScreen: View {
             .padding(.horizontal, 12).frame(minHeight: 44)
             .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 12).padding(.vertical, 8)
+            // Autocomplete uses saved bookmarks only (spec §4.2): no history, no remote suggestions.
+            if editingAddress, !suggestions.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(suggestions) { bookmark in
+                        Button {
+                            editingAddress = false
+                            address = bookmark.url.absoluteString
+                            browser.load(bookmark.url)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(bookmark.title).lineLimit(1)
+                                Text(bookmark.url.absoluteString).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 44).padding(.horizontal, 14)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("북마크 \(bookmark.title)")
+                        Divider()
+                    }
+                }
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 12).padding(.bottom, 8)
+            }
             if let url = browser.tab?.view.url, let host = url.host {
                 Label(host, systemImage: "lock").font(.caption).lineLimit(1).truncationMode(.middle)
                     .foregroundStyle(.secondary).padding(.bottom, 5).accessibilityLabel("현재 HTTPS 호스트 \(host)")
@@ -147,6 +170,15 @@ struct BrowserScreen: View {
         } message: { Text("탭과 진행 중인 비공개 다운로드를 정리합니다. 저장한 영상, 북마크와 승인한 공개 전송은 유지됩니다.") }
     }
 
+    /// Bookmarks whose title or address contains the typed text, excluding the page already shown.
+    private var suggestions: [Bookmark] {
+        let query = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.count >= 2, query != browser.tab?.view.url?.absoluteString else { return [] }
+        return Array(center.library.bookmarks.filter {
+            $0.title.localizedCaseInsensitiveContains(query) || $0.url.absoluteString.localizedCaseInsensitiveContains(query)
+        }.prefix(5))
+    }
+
     private func toolbarButton(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
         Button(action: action) { Image(systemName: icon).frame(maxWidth: .infinity, minHeight: 46) }
             .accessibilityLabel(title)
@@ -181,6 +213,9 @@ struct DownloadForm: View {
     @State private var candidates: [URL] = []
     @State private var scanning = false
     @State private var hlsOptions = HLSDownloadOptions()
+    @State private var fileInfo: String?
+    @State private var infoError: String?
+    @State private var checkingInfo = false
 
     init(initialURL: URL?, browser: PrivateBrowser, center: DownloadCenter) {
         self.browser = browser; self.center = center
@@ -216,6 +251,21 @@ struct DownloadForm: View {
                 TextField("https://…", text: $input, axis: .vertical).lineLimit(2...4)
                     .autocorrectionDisabled().textInputAutocapitalization(.never).keyboardType(.URL)
                 if let host = url?.host { LabeledContent("출처", value: host) }
+            }
+            if let url, MediaPolicy.secureWebURL(url) {
+                Section("파일 정보") {
+                    LabeledContent("파일", value: fileInfo ?? DownloadCenter.fileSummary(
+                        name: url.lastPathComponent, ext: Self.knownExtension(url), bytes: nil))
+                    LabeledContent("저장 위치", value: mode == .hls ? "iOS가 관리하는 오프라인 자산(앱 내 재생)" : "앱 내 보호 저장소(iCloud 백업 제외)")
+                    LabeledContent("진행 조건", value: mode == .web ? "앱을 화면에 둔 상태에서만" : "화면 잠금·앱 종료 중에도 iOS가 진행")
+                    if mode.usesSystemSession {
+                        Button(checkingInfo ? "확인 중…" : "서버에서 크기·형식 확인") { Task { await probe(url) } }.disabled(checkingInfo)
+                    } else {
+                        Text("비공개 저장은 세션 밖에서 서버에 묻지 않습니다. 크기와 형식은 저장을 시작할 때 확인 창에 표시됩니다.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if let infoError { Text(infoError).font(.footnote).foregroundStyle(.secondary) }
+                }
             }
             Section {
                 Picker("저장 방식", selection: $mode) {
@@ -267,6 +317,28 @@ struct DownloadForm: View {
             }
         }.navigationTitle("영상 저장")
             .task { await scan() }
+    }
+
+    private static func knownExtension(_ url: URL) -> String? {
+        let ext = url.pathExtension.lowercased()
+        return ["mp4", "mov", "m4v", "m3u8"].contains(ext) ? ext : nil
+    }
+
+    /// Same request the queue makes before a public transfer, surfaced early so the
+    /// confirmation can show real size and format (spec §4.1 "다운로드 확인").
+    @MainActor private func probe(_ url: URL) async {
+        guard !checkingInfo else { return }
+        checkingInfo = true
+        infoError = nil
+        defer { checkingInfo = false }
+        do {
+            let bytes = try await PublicSourceCheck.verify(url, mode: mode, hosts: center.library.publicHosts)
+            fileInfo = DownloadCenter.fileSummary(name: url.lastPathComponent, ext: mode == .hls ? "m3u8" : Self.knownExtension(url) ?? "mp4",
+                                                  bytes: mode == .hls ? nil : bytes)
+            if mode == .hls { fileInfo = "\(MediaPolicy.displayName(url.deletingPathExtension().lastPathComponent)) · HLS VOD · 크기는 iOS가 저장하며 선택 화질에 따라 다름" }
+        } catch {
+            infoError = MediaError.classify(error).message
+        }
     }
 
     @MainActor private func scan() async {

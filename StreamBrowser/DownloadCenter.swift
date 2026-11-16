@@ -54,6 +54,8 @@ final class DownloadCenter: ObservableObject {
     @Published private(set) var webOffer: UUID?
     /// Host of the pending web save, shown in the confirmation so the user can see which site is downloading.
     var webOfferHost: String? { webOffer.flatMap { requests[$0]?.host } }
+    /// File name, format and size of the pending web save, from the server response.
+    @Published private(set) var webOfferDetails: String?
     @Published private(set) var libraryRecoveryRequired = false
     @Published private(set) var isErasing = false
     /// Recent download failures (code and mode only), newest first.
@@ -472,16 +474,25 @@ final class DownloadCenter: ObservableObject {
         startMonitoring()
     }
 
-    func offerWebSave(_ id: UUID) -> Bool {
+    func offerWebSave(_ id: UUID, response: URLResponse, suggested: String) -> Bool {
         guard webOffer == nil, unlocked, foreground, requests[id] != nil else { return false }
         webOffer = id
+        webOfferDetails = Self.fileSummary(name: suggested, ext: MediaPolicy.videoExtension(response, suggested: suggested),
+                                           bytes: response.expectedContentLength)
         update(id) { $0.state = .awaitingImport }
         return true
+    }
+
+    /// "name · MP4 · 128 MB" for confirmation screens; unknown parts say so instead of guessing.
+    static func fileSummary(name: String, ext: String?, bytes: Int64?) -> String {
+        let size = (bytes ?? -1) > 0 ? ByteCountFormatter.string(fromByteCount: bytes!, countStyle: .file) : "크기 알 수 없음"
+        return "\(MediaPolicy.displayName((name as NSString).deletingPathExtension)) · \(ext?.uppercased() ?? "형식 미확인") · \(size)"
     }
 
     func answerWebOffer(save: Bool) {
         guard let id = webOffer else { return }
         webOffer = nil
+        webOfferDetails = nil
         if save { webTransfers[id]?.approve() } else { cancel(id) }
     }
 
@@ -768,7 +779,9 @@ private final class WebTransfer: NSObject, WKDownloadDelegate {
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
         if requiresConfirmation {
-            guard center?.offerWebSave(id) == true else { completionHandler(nil); center?.webFailed(id, location: nil, error: .busy); return }
+            guard center?.offerWebSave(id, response: response, suggested: suggestedFilename) == true else {
+                completionHandler(nil); center?.webFailed(id, location: nil, error: .busy); return
+            }
             proposedDestination = { [weak self] approved in
                 guard approved, let self else { completionHandler(nil); return }
                 self.chooseDestination(response, suggestedFilename, completionHandler)

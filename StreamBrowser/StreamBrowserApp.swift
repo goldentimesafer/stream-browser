@@ -45,6 +45,39 @@ struct StreamBrowserApp: App {
     }
 }
 
+/// First-run guide (spec §4.1 "시작 안내"). Explains the session model and lets the user decide
+/// about app lock before anything else; no permission is requested here.
+struct OnboardingScreen: View {
+    @Binding var lockEnabled: Bool
+    let finish: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Spacer()
+            Image(systemName: "lock.shield").font(.system(size: 44)).accessibilityHidden(true)
+            Text("Stream Browser").font(.largeTitle.bold())
+            point("eye.slash", "비공개 탐색", "탭·쿠키·방문 기록은 앱을 닫거나 세션을 종료하면 사라집니다. 기기에 남는 것은 북마크와 저장한 영상뿐입니다.")
+            point("arrow.down.circle", "저장한 영상은 남습니다", "저장함의 영상은 세션을 종료해도 기기에 보관됩니다. iCloud 백업에서는 제외됩니다.")
+            point("faceid", "앱 잠금", "Face ID 또는 기기 암호로 저장함과 비공개 탭을 보호합니다. 설정에서 언제든 바꿀 수 있습니다.")
+            Toggle("앱 잠금 사용", isOn: $lockEnabled).padding(.top, 4)
+            Text("사진·알림 권한은 해당 기능을 처음 쓸 때 따로 묻습니다.").font(.footnote).foregroundStyle(.secondary)
+            Spacer()
+            Button("시작", action: finish).buttonStyle(.borderedProminent).frame(maxWidth: .infinity)
+        }
+        .padding(24)
+    }
+
+    private func point(_ icon: String, _ title: String, _ body: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon).font(.title2).frame(width: 32).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline)
+                Text(body).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
 enum BrowserSection: String, CaseIterable {
     case browser = "탐색", library = "저장함", settings = "설정"
 
@@ -62,6 +95,7 @@ struct BrowserRoot: View {
     @StateObject private var browser = PrivateBrowser(center: DownloadCenter.shared)
     @StateObject private var downloads = DownloadCenter.shared
     @AppStorage("appLockEnabled") private var lockEnabled = true
+    @AppStorage("onboardingDone") private var onboardingDone = false
     @State private var locked = true
     @State private var section = BrowserSection.browser
     @State private var authenticating = false
@@ -86,7 +120,12 @@ struct BrowserRoot: View {
 
     var body: some View {
         ZStack {
-            if locked {
+            if !onboardingDone {
+                OnboardingScreen(lockEnabled: $lockEnabled) {
+                    onboardingDone = true
+                    if !requiresAuthentication { completeUnlock() }
+                }
+            } else if locked {
                 VStack(spacing: 18) {
                     Image(systemName: "lock.shield").font(.system(size: 48)).accessibilityHidden(true)
                     Text("Stream Browser").font(.largeTitle.bold())
@@ -182,7 +221,7 @@ struct BrowserRoot: View {
             Button("저장") { downloads.answerWebOffer(save: true) }
             Button("취소", role: .cancel) { downloads.answerWebOffer(save: false) }
         } message: {
-            Text("출처: \(downloads.webOfferHost ?? "알 수 없음")\n현재 탭의 웹 세션에서 영상을 내려받습니다. 저장한 영상은 세션을 닫은 뒤에도 기기에 남습니다.")
+            Text("출처: \(downloads.webOfferHost ?? "알 수 없음")\n파일: \(downloads.webOfferDetails ?? "알 수 없음")\n저장 위치: 앱 내 보호 저장소(iCloud 백업 제외). 앱을 화면에 둔 상태에서만 진행됩니다.\n저장한 영상은 세션을 닫은 뒤에도 기기에 남습니다.")
         }
         .confirmationDialog("이 기기의 Stream Browser 데이터를 삭제할까요?", isPresented: $showErase, titleVisibility: .visible) {
             Button("앱 데이터 삭제", role: .destructive) {
