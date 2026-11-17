@@ -2,6 +2,21 @@ import XCTest
 
 final class ScreenCaptureTests: XCTestCase {
     @MainActor
+    func testExistingInstallKeepsLock() {
+        // CI installs a pre-guide preferences fixture before running this test.
+        let app = XCUIApplication()
+        app.launch()
+        let start = app.buttons["시작"]
+        guard show(start) else { return }
+        XCTAssertFalse(app.switches["앱 잠금 사용"].exists)
+        XCTAssertFalse(app.buttons["저장함"].exists)
+        start.tap()
+        guard show(app.buttons["잠금 해제"]) else { return }
+        XCTAssertFalse(app.buttons["저장함"].exists)
+        XCTAssertFalse(app.buttons["설정"].exists)
+    }
+
+    @MainActor
     func testCaptureMainScreens() {
         let app = XCUIApplication()
         // No launch arguments here: an argument-domain value would override the preference the
@@ -11,6 +26,7 @@ final class ScreenCaptureTests: XCTestCase {
         let start = app.buttons["시작"]
         if start.waitForExistence(timeout: 30) {
             capture("00-welcome", in: app)
+            XCTAssertFalse(app.switches["앱 잠금 사용"].exists)
             start.tap()
         } else {
             capture("diagnostic-lock", in: app)

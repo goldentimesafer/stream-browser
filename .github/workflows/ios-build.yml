@@ -22,7 +22,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Validate media policy, recovery and build unsigned IPA
@@ -30,9 +30,12 @@ jobs:
         env:
           # Distinguishes installed builds; shown in Settings as 버전 x.y.z (N).
           BUILD_NUMBER: ${{ github.run_number }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: StreamBrowser-unsigned
-          path: build/StreamBrowser-unsigned.ipa
+          name: StreamBrowser-unsigned-${{ github.event_name }}-${{ github.sha }}
+          path: |
+            build/StreamBrowser-unsigned.ipa
+            build/StreamBrowser-unsigned.ipa.sha256
+            build/StreamBrowser-build.txt
           if-no-files-found: error
           retention-days: 7

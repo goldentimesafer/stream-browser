@@ -48,7 +48,7 @@ struct SettingsScreen: View {
                     Text("앱이 참조하는 HLS 패키지와 임시 파일을 포함합니다. 시스템이 별도로 관리하는 전송 캐시는 포함되지 않을 수 있습니다.").font(.footnote).foregroundStyle(.secondary)
                     Button("사용량 다시 계산") { bytes = center.usage() }
                 } header: { Text("저장함") } footer: {
-                    Text("백업 정책: 저장한 영상, 저장 목록, 다운로드 작업 기록은 iCloud·컴퓨터 백업에서 제외됩니다. 기기를 바꾸면 영상을 파일 앱으로 내보내 직접 옮겨야 합니다. 북마크와 설정도 백업되지 않습니다.")
+                    Text("앱은 저장한 일반 영상과 저장 목록에 백업 제외를 설정합니다. HLS는 저장함 등록 시 제외를 설정하며, 등록 전 파일은 iOS가 관리합니다. 기기 이전이 필요한 일반 영상은 파일 앱에 따로 내보내세요.")
                 }
                 Section { Button(center.isErasing ? "삭제 처리 중…" : "앱 데이터 삭제", role: .destructive, action: erase)
                         .disabled(center.isErasing || center.libraryRecoveryRequired) }

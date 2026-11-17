@@ -282,7 +282,7 @@ final class DownloadCenter: ObservableObject {
         let id = UUID()
         requests[id] = url
         rows.insert(DownloadRow(id: id, mode: .web, name: "영상"), at: 0)
-        attachWebDownload(download, id: id, expected: url, requiresConfirmation: true)
+        attachWebDownload(download, id: id, expected: url)
     }
 
     private var activeCount: Int { systemTasks.count + webTransfers.count + startingWeb.count + checks.count }
@@ -301,7 +301,7 @@ final class DownloadCenter: ObservableObject {
                 update(id) { $0.state = .checkingSource }
                 checks[id] = Task {
                     do {
-                        let expectedBytes = try await PublicSourceCheck.verify(url, mode: mode, hosts: hosts)
+                        let info = try await PublicSourceCheck.verify(url, mode: mode, hosts: hosts)
                         let configuration: AVAssetDownloadConfiguration?
                         if mode == .hls { configuration = try await (hlsOptions[id] ?? HLSDownloadOptions()).configuration(for: url) }
                         else { configuration = nil }
@@ -310,7 +310,7 @@ final class DownloadCenter: ObservableObject {
                         guard requests[id] != nil else { return }
                         guard foreground, unlocked else { update(id) { $0.state = .queued }; return }
                         guard library.publicHosts == hosts else { fail(id, .untrustedSource); return }
-                        try startSystem(id, url: url, mode: mode, expectedBytes: expectedBytes, configuration: configuration)
+                        try startSystem(id, url: url, mode: mode, expectedBytes: info.byteCount, configuration: configuration)
                     } catch is CancellationError { }
                     catch {
                         checks[id] = nil
@@ -465,10 +465,10 @@ final class DownloadCenter: ObservableObject {
         DownloadRules.canPause(hasTask: systemTasks[id] != nil, job: jobs[id])
     }
 
-    private func attachWebDownload(_ download: WKDownload, id: UUID, expected: URL, requiresConfirmation: Bool = false) {
+    private func attachWebDownload(_ download: WKDownload, id: UUID, expected: URL) {
         startingWeb.remove(id)
         guard unlocked, foreground, requests[id] != nil else { download.cancel { _ in }; pump(); return }
-        let transfer = WebTransfer(download: download, id: id, expected: expected, requiresConfirmation: requiresConfirmation, center: self)
+        let transfer = WebTransfer(download: download, id: id, expected: expected, center: self)
         webTransfers[id] = transfer
         download.delegate = transfer
         startMonitoring()
@@ -766,27 +766,43 @@ private final class WebTransfer: NSObject, WKDownloadDelegate {
     let download: WKDownload
     let id: UUID
     let expected: URL
-    let requiresConfirmation: Bool
     weak var center: DownloadCenter?
     private var location: URL?
     private var proposedDestination: ((Bool) -> Void)?
 
-    init(download: WKDownload, id: UUID, expected: URL, requiresConfirmation: Bool, center: DownloadCenter) {
+    init(download: WKDownload, id: UUID, expected: URL, center: DownloadCenter) {
         self.download = download; self.id = id; self.expected = expected
-        self.requiresConfirmation = requiresConfirmation; self.center = center
+        self.center = center
     }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
-        if requiresConfirmation {
-            guard center?.offerWebSave(id, response: response, suggested: suggestedFilename) == true else {
-                completionHandler(nil); center?.webFailed(id, location: nil, error: .busy); return
-            }
-            proposedDestination = { [weak self] approved in
-                guard approved, let self else { completionHandler(nil); return }
-                self.chooseDestination(response, suggestedFilename, completionHandler)
-            }
-        } else { chooseDestination(response, suggestedFilename, completionHandler) }
+        guard let actual = response.url, sameOrigin(actual) else {
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: .redirect)
+            return
+        }
+        if let http = response as? HTTPURLResponse, let error = MediaError.httpStatus(http.statusCode) {
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: error)
+            return
+        }
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              MediaPolicy.videoExtension(response, suggested: suggestedFilename) != nil else {
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: .format)
+            return
+        }
+        proposedDestination = { [weak self] approved in
+            guard approved, let self else { completionHandler(nil); return }
+            self.chooseDestination(response, suggestedFilename, completionHandler)
+        }
+        guard center?.offerWebSave(id, response: response, suggested: suggestedFilename) == true else {
+            proposedDestination = nil
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: .busy)
+            return
+        }
     }
 
     private func chooseDestination(_ response: URLResponse, _ suggestedFilename: String, _ complete: (URL?) -> Void) {

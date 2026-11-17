@@ -76,6 +76,17 @@ enum MediaError: String, Error {
 }
 
 enum MediaPolicy {
+    static func responseByteCount(_ response: URLResponse) -> Int64? {
+        if let http = response as? HTTPURLResponse, http.statusCode == 206 {
+            // Content-Length in a ranged response describes only the selected bytes.
+            guard let value = http.value(forHTTPHeaderField: "Content-Range"),
+                  let separator = value.lastIndex(of: "/"),
+                  let total = Int64(value[value.index(after: separator)...]), total > 0 else { return nil }
+            return total
+        }
+        return response.expectedContentLength > 0 ? response.expectedContentLength : nil
+    }
+
     static func secureWebURL(_ url: URL) -> Bool {
         guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false),
               c.scheme?.lowercased() == "https", let host = c.host, !host.isEmpty else { return false }

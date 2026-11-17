@@ -8,6 +8,11 @@ final class RejectRedirects: NSObject, URLSessionTaskDelegate {
 }
 
 enum PublicSourceCheck {
+    struct FileInfo {
+        let fileExtension: String
+        let byteCount: Int64?
+    }
+
     static func configuration(_ configuration: URLSessionConfiguration) -> URLSessionConfiguration {
         configuration.httpShouldSetCookies = false
         configuration.httpCookieStorage = nil
@@ -19,7 +24,7 @@ enum PublicSourceCheck {
         return configuration
     }
 
-    static func verify(_ url: URL, mode: TransferMode, hosts: Set<String>) async throws -> Int64? {
+    static func verify(_ url: URL, mode: TransferMode, hosts: Set<String>) async throws -> FileInfo {
         guard MediaPolicy.publicURL(url, hosts: hosts) else { throw MediaError.untrustedSource }
         let config = configuration(.ephemeral)
         config.timeoutIntervalForResource = 20
@@ -49,17 +54,14 @@ enum PublicSourceCheck {
                 stack += manifest.playlists.map { ($0, ancestors.union([playlist])) }
             }
             guard foundVOD else { throw MediaError.hls }
-            return nil
+            return FileInfo(fileExtension: "m3u8", byteCount: nil)
         } else {
             var request = URLRequest(url: url)
             request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
             let (_, response) = try await session.bytes(for: request)
             try validate(response, expected: url, partial: true)
-            guard MediaPolicy.videoExtension(response) != nil else { throw MediaError.format }
-            if let http = response as? HTTPURLResponse, http.statusCode == 206 {
-                return http.value(forHTTPHeaderField: "Content-Range")?.split(separator: "/").last.flatMap { Int64($0) }
-            }
-            return response.expectedContentLength > 0 ? response.expectedContentLength : nil
+            guard let fileExtension = MediaPolicy.videoExtension(response) else { throw MediaError.format }
+            return FileInfo(fileExtension: fileExtension, byteCount: MediaPolicy.responseByteCount(response))
         }
     }
 

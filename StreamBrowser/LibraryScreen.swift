@@ -90,6 +90,8 @@ struct LibraryScreen: View {
             }
             .navigationTitle("저장함")
             .searchable(text: $search, prompt: "저장한 영상 검색")
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -332,6 +334,7 @@ private struct PlayerSurface: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.allowsPictureInPicturePlayback = false
+        controller.updatesNowPlayingInfoCenter = false
         controller.player = player
         return controller
     }

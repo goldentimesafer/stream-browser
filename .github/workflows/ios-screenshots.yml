@@ -2,6 +2,12 @@ name: iPhone screenshots
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'StreamBrowser/**'
+      - 'StreamBrowser.xcodeproj/**'
+      - 'Tests/**'
+      - '.github/workflows/ios-screenshots.yml'
 
 permissions:
   contents: read
@@ -13,7 +19,7 @@ jobs:
     env:
       DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - name: Build the simulator app and UI tests
@@ -30,6 +36,22 @@ jobs:
             ARCHS=x86_64 ONLY_ACTIVE_ARCH=YES \
             -derivedDataPath build/SimulatorBuild \
             -parallel-testing-enabled NO build-for-testing
+      - name: Check lock with existing-install preferences
+        run: |
+          xcrun simctl bootstatus "$SCREEN_SIMULATOR" -b
+          bundle=local.streambrowser.ios
+          xcrun simctl install "$SCREEN_SIMULATOR" build/SimulatorBuild/Build/Products/Debug-iphonesimulator/StreamBrowser.app
+          container=$(xcrun simctl get_app_container "$SCREEN_SIMULATOR" "$bundle" data)
+          mkdir -p "$container/Library/Preferences"
+          preferences="$container/Library/Preferences/$bundle.plist"
+          plutil -create xml1 "$preferences"
+          plutil -insert appLockEnabled -bool YES "$preferences"
+          xcodebuild -project StreamBrowser.xcodeproj -scheme StreamBrowser \
+            -destination "platform=iOS Simulator,id=$SCREEN_SIMULATOR" \
+            -derivedDataPath build/SimulatorBuild -parallel-testing-enabled NO \
+            -resultBundlePath build/ExistingLock.xcresult \
+            -only-testing:StreamBrowserUITests/ScreenCaptureTests/testExistingInstallKeepsLock test-without-building
+          xcrun simctl uninstall "$SCREEN_SIMULATOR" "$bundle"
       - name: Capture the first launch directly
         run: |
           mkdir -p build/screenshots
@@ -45,7 +67,7 @@ jobs:
             -destination "platform=iOS Simulator,id=$SCREEN_SIMULATOR" \
             -derivedDataPath build/SimulatorBuild \
             -parallel-testing-enabled NO -resultBundlePath build/Screenshots.xcresult \
-            -only-testing:StreamBrowserUITests/ScreenCaptureTests test-without-building
+            -only-testing:StreamBrowserUITests/ScreenCaptureTests/testCaptureMainScreens test-without-building
       - name: Export screenshots as PNG files
         if: ${{ !cancelled() && hashFiles('build/Screenshots.xcresult/Info.plist') != '' }}
         run: |
@@ -64,7 +86,7 @@ jobs:
             fi
           done
           exit "$missing"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: ${{ !cancelled() && hashFiles('build/screenshots/*.png') != '' }}
         with:
           name: StreamBrowser-screenshots
@@ -79,12 +101,16 @@ jobs:
             xcrun simctl spawn "$SCREEN_SIMULATOR" log show --last 15m --style compact \
               --predicate 'process == "StreamBrowser"' > build/diagnostics/app.log 2>&1 || true
           fi
+          if [[ -f build/ExistingLock.xcresult/Info.plist ]]; then
+            xcrun xcresulttool get test-results summary --path build/ExistingLock.xcresult \
+              > build/diagnostics/existing-lock.json || true
+          fi
           for folder in "$HOME/Library/Logs/DiagnosticReports" "$HOME/Library/Developer/CoreSimulator/Devices/${SCREEN_SIMULATOR:-missing}/data/Library/Logs/CrashReporter"; do
             if [[ -d "$folder" ]]; then
               find "$folder" -type f -name 'StreamBrowser*' -exec cp {} build/diagnostics/ \;
             fi
           done
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
           name: StreamBrowser-simulator-diagnostics

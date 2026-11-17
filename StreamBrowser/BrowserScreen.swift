@@ -8,6 +8,7 @@ struct BrowserScreen: View {
     @State private var address = ""
     @FocusState private var editingAddress: Bool
     @State private var panel: Panel?
+    @State private var pendingDownload: DownloadForm.Submission?
     @State private var confirmClear = false
     @State private var findText = ""
     @State private var findResult: String?
@@ -123,11 +124,13 @@ struct BrowserScreen: View {
             downloadURL = url
             panel = .download
         }
-        .sheet(item: $panel) { selected in
+        .sheet(item: $panel, onDismiss: startPendingDownload) { selected in
             NavigationStack {
                 switch selected {
                 case .download:
-                    DownloadForm(initialURL: downloadURL ?? browser.tab?.view.url, browser: browser, center: center)
+                    DownloadForm(initialURL: downloadURL ?? browser.tab?.view.url, browser: browser, center: center) {
+                        pendingDownload = $0
+                    }
                 case .tabs:
                     List {
                         Button("새 비공개 탭", systemImage: "plus") { browser.newTab(); panel = nil }
@@ -170,6 +173,14 @@ struct BrowserScreen: View {
         } message: { Text("탭과 진행 중인 비공개 다운로드를 정리합니다. 저장한 영상, 북마크와 승인한 공개 전송은 유지됩니다.") }
     }
 
+    private func startPendingDownload() {
+        guard let submission = pendingDownload else { return }
+        pendingDownload = nil
+        guard scenePhase == .active else { return }
+        if submission.mode == .web && browser.tab == nil { browser.newTab() }
+        center.enqueue(submission.url, mode: submission.mode, webView: browser.tab?.view, options: submission.options)
+    }
+
     /// Bookmarks whose title or address contains the typed text, excluding the page already shown.
     private var suggestions: [Bookmark] {
         let query = address.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -204,9 +215,16 @@ struct BrowserScreen: View {
 }
 
 struct DownloadForm: View {
+    struct Submission {
+        let url: URL
+        let mode: TransferMode
+        let options: HLSDownloadOptions
+    }
+
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var browser: PrivateBrowser
     @ObservedObject var center: DownloadCenter
+    let submit: (Submission) -> Void
     @State private var input: String
     @State private var mode: TransferMode
     @State private var permitted = false
@@ -215,15 +233,27 @@ struct DownloadForm: View {
     @State private var hlsOptions = HLSDownloadOptions()
     @State private var fileInfo: String?
     @State private var infoError: String?
-    @State private var checkingInfo = false
+    @State private var pendingProbe: ProbeRequest?
 
-    init(initialURL: URL?, browser: PrivateBrowser, center: DownloadCenter) {
+    private struct ProbeRequest: Equatable {
+        let url: URL
+        let mode: TransferMode
+        let hosts: Set<String>
+    }
+
+    init(initialURL: URL?, browser: PrivateBrowser, center: DownloadCenter, submit: @escaping (Submission) -> Void) {
         self.browser = browser; self.center = center
+        self.submit = submit
         _input = State(initialValue: initialURL?.absoluteString ?? "")
         _mode = State(initialValue: initialURL?.pathExtension.lowercased() == "m3u8" ? .hls : .web)
     }
 
     private var url: URL? { URL(string: input.trimmingCharacters(in: .whitespacesAndNewlines)) }
+
+    private var probeRequest: ProbeRequest? {
+        guard let url, MediaPolicy.secureWebURL(url), mode.usesSystemSession else { return nil }
+        return ProbeRequest(url: url, mode: mode, hosts: center.library.publicHosts)
+    }
 
     var body: some View {
         Form {
@@ -257,9 +287,13 @@ struct DownloadForm: View {
                     LabeledContent("파일", value: fileInfo ?? DownloadCenter.fileSummary(
                         name: url.lastPathComponent, ext: Self.knownExtension(url), bytes: nil))
                     LabeledContent("저장 위치", value: mode == .hls ? "iOS가 관리하는 오프라인 자산(앱 내 재생)" : "앱 내 보호 저장소(iCloud 백업 제외)")
-                    LabeledContent("진행 조건", value: mode == .web ? "앱을 화면에 둔 상태에서만" : "화면 잠금·앱 종료 중에도 iOS가 진행")
-                    if mode.usesSystemSession {
-                        Button(checkingInfo ? "확인 중…" : "서버에서 크기·형식 확인") { Task { await probe(url) } }.disabled(checkingInfo)
+                    LabeledContent("진행 조건", value: mode == .web ? "앱을 화면에 둔 상태에서만" : "화면 잠금 중에도 iOS가 진행")
+                    if let request = probeRequest {
+                        Button(pendingProbe != nil ? "확인 중…" : "서버에서 크기·형식 확인") {
+                            infoError = nil
+                            fileInfo = nil
+                            pendingProbe = request
+                        }.disabled(pendingProbe != nil)
                     } else {
                         Text("비공개 저장은 세션 밖에서 서버에 묻지 않습니다. 크기와 형식은 저장을 시작할 때 확인 창에 표시됩니다.")
                             .font(.footnote).foregroundStyle(.secondary)
@@ -273,6 +307,8 @@ struct DownloadForm: View {
                 }
                 if mode.usesSystemSession {
                     Text("설정에 등록한 공개 HTTPS 출처에서 저장합니다. 셀룰러 데이터는 사용하지 않으며 시작 시간은 시스템 조건에 따릅니다.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    Text("앱 전환 화면에서 강제 종료하면 전송이 중단될 수 있습니다. 다시 열어 상태를 확인하세요.")
                         .font(.footnote).foregroundStyle(.secondary)
                     Text("시스템 전송은 서버의 주소 변경을 자동으로 따를 수 있습니다. 등록한 출처 밖의 접속까지 차단하지 않으므로 신뢰하는 공개 제공자에만 사용하세요.")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -310,13 +346,23 @@ struct DownloadForm: View {
             Section {
                 Button("저장 시작", systemImage: "arrow.down.circle") {
                     guard let url else { return }
-                    if mode == .web && browser.tab == nil { browser.newTab() }
-                    center.enqueue(url, mode: mode, webView: browser.tab?.view, options: hlsOptions)
+                    submit(Submission(url: url, mode: mode, options: hlsOptions))
                     dismiss()
                 }.disabled(!permitted || url.map(MediaPolicy.secureWebURL) != true)
             }
         }.navigationTitle("영상 저장")
             .task { await scan() }
+            .task(id: pendingProbe) {
+                guard let request = pendingProbe else { return }
+                await probe(request)
+            }
+            .onChange(of: probeRequest) { _, _ in
+                pendingProbe = nil
+                fileInfo = nil
+                infoError = nil
+            }
+            .onChange(of: input) { _, _ in permitted = false }
+            .onChange(of: mode) { _, _ in permitted = false }
     }
 
     private static func knownExtension(_ url: URL) -> String? {
@@ -326,17 +372,17 @@ struct DownloadForm: View {
 
     /// Same request the queue makes before a public transfer, surfaced early so the
     /// confirmation can show real size and format (spec §4.1 "다운로드 확인").
-    @MainActor private func probe(_ url: URL) async {
-        guard !checkingInfo else { return }
-        checkingInfo = true
-        infoError = nil
-        defer { checkingInfo = false }
+    @MainActor private func probe(_ request: ProbeRequest) async {
+        defer {
+            if !Task.isCancelled, pendingProbe == request { pendingProbe = nil }
+        }
         do {
-            let bytes = try await PublicSourceCheck.verify(url, mode: mode, hosts: center.library.publicHosts)
-            fileInfo = DownloadCenter.fileSummary(name: url.lastPathComponent, ext: mode == .hls ? "m3u8" : Self.knownExtension(url) ?? "mp4",
-                                                  bytes: mode == .hls ? nil : bytes)
-            if mode == .hls { fileInfo = "\(MediaPolicy.displayName(url.deletingPathExtension().lastPathComponent)) · HLS VOD · 크기는 iOS가 저장하며 선택 화질에 따라 다름" }
+            let info = try await PublicSourceCheck.verify(request.url, mode: request.mode, hosts: request.hosts)
+            guard !Task.isCancelled, pendingProbe == request, probeRequest == request else { return }
+            let format = request.mode == .hls ? "HLS VOD" : info.fileExtension
+            fileInfo = DownloadCenter.fileSummary(name: request.url.lastPathComponent, ext: format, bytes: info.byteCount)
         } catch {
+            guard !Task.isCancelled, pendingProbe == request, probeRequest == request else { return }
             infoError = MediaError.classify(error).message
         }
     }
