@@ -60,7 +60,7 @@ enum PublicSourceCheck {
             request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
             let (_, response) = try await session.bytes(for: request)
             try validate(response, expected: url, partial: true)
-            guard let fileExtension = MediaPolicy.videoExtension(response) else { throw MediaError.format }
+            guard let fileExtension = MediaPolicy.mediaExtension(response) else { throw MediaError.format }
             return FileInfo(fileExtension: fileExtension, byteCount: MediaPolicy.responseByteCount(response))
         }
     }

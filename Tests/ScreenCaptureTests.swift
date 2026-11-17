@@ -47,15 +47,35 @@ final class ScreenCaptureTests: XCTestCase {
         guard show(app.textFields["주소 또는 검색어"]) else { return }
         capture("02-browser", in: app)
 
-        app.buttons["저장함"].tap()
-        guard show(app.staticTexts["저장한 영상이 없습니다."]) else { return }
+        let tabs = app.tabBars.firstMatch
+        guard show(tabs.buttons["저장함"]) else { return }
+        tabs.buttons["저장함"].tap()
+        let video = app.buttons["예제 동영상"]
+        let audio = app.buttons["예제 오디오"]
+        guard show(video), show(audio) else { return }
+        XCTAssertEqual(video.frame.minY, audio.frame.minY, accuracy: 2)
+        XCTAssertLessThan(video.frame.minX, audio.frame.minX)
+        let duration = NSPredicate(format: "value CONTAINS %@", "0:04")
+        let durationReady = XCTNSPredicateExpectation(predicate: duration, object: video)
+        XCTAssertEqual(XCTWaiter.wait(for: [durationReady], timeout: 10), .completed)
+        XCTAssertTrue((video.value as? String)?.contains("25") == true)
         capture("03-library", in: app)
 
-        app.buttons["설정"].tap()
+        app.buttons["동영상"].tap()
+        XCTAssertTrue(video.exists)
+        XCTAssertFalse(audio.exists)
+        app.buttons["오디오"].tap()
+        XCTAssertTrue(audio.exists)
+        XCTAssertFalse(video.exists)
+        app.buttons["전체"].tap()
+        XCTAssertTrue(video.exists)
+        XCTAssertTrue(audio.exists)
+
+        tabs.buttons["설정"].tap()
         guard show(app.switches["앱 잠금"]) else { return }
         capture("04-settings", in: app)
 
-        app.buttons["탐색"].tap()
+        tabs.buttons["탐색"].tap()
         app.buttons["영상 저장"].tap()
         guard show(app.navigationBars["영상 저장"]) else { return }
         capture("05-download", in: app)

@@ -1,7 +1,7 @@
 import Foundation
 
 enum MediaKind: String, Codable {
-    case file, hls
+    case file, hls, audio
 }
 
 enum TransferMode: String, Codable {
@@ -113,13 +113,19 @@ enum MediaPolicy {
         return c.percentEncodedQuery == nil && c.fragment == nil
     }
 
-    static func videoExtension(_ response: URLResponse, suggested: String? = nil) -> String? {
-        let byType: [String: String] = ["video/mp4": "mp4", "video/quicktime": "mov", "video/x-m4v": "m4v"]
+    static let audioExtensions: Set<String> = ["m4a", "mp3"]
+    static let fileExtensions: Set<String> = audioExtensions.union(["mp4", "mov", "m4v"])
+
+    static func mediaExtension(_ response: URLResponse, suggested: String? = nil) -> String? {
+        let byType: [String: String] = [
+            "video/mp4": "mp4", "video/quicktime": "mov", "video/x-m4v": "m4v",
+            "audio/mp4": "m4a", "audio/x-m4a": "m4a", "audio/mpeg": "mp3"
+        ]
         let mime = response.mimeType?.lowercased()
         if let mime, let ext = byType[mime] { return ext }
         guard mime == nil || mime == "application/octet-stream" else { return nil }
         let candidates = [response.url?.pathExtension, suggested.map { ($0 as NSString).pathExtension }]
-        return candidates.compactMap { $0?.lowercased() }.first { ["mp4", "mov", "m4v"].contains($0) }
+        return candidates.compactMap { $0?.lowercased() }.first { fileExtensions.contains($0) }
     }
 
     static func displayName(_ input: String, fallback: String = "영상") -> String {
@@ -136,6 +142,15 @@ enum MediaPolicy {
         let bytes = Array(data.prefix(16))
         let atom = String(decoding: bytes[4..<8], as: UTF8.self)
         return ["ftyp", "moov", "mdat", "wide", "free"].contains(atom)
+    }
+
+    static func hasSupportedFileHeader(_ data: Data, fileExtension: String) -> Bool {
+        guard fileExtensions.contains(fileExtension) else { return false }
+        guard fileExtension == "mp3" else { return hasMovieHeader(data) }
+        let bytes = Array(data.prefix(4))
+        guard bytes.count == 4 else { return false }
+        return bytes.starts(with: [0x49, 0x44, 0x33]) ||
+            (bytes[0] == 0xff && bytes[1] & 0xe0 == 0xe0)
     }
 }
 

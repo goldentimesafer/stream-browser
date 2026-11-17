@@ -316,7 +316,7 @@ struct DownloadForm: View {
                         Text("비암호화 주문형 HLS를 앱 안에 보관합니다.").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-                Toggle("저장이 허용된 영상입니다", isOn: $permitted)
+                Toggle("저장이 허용된 파일입니다", isOn: $permitted)
             }
             if mode == .hls {
                 Section("HLS 저장 옵션") {
@@ -367,7 +367,7 @@ struct DownloadForm: View {
 
     private static func knownExtension(_ url: URL) -> String? {
         let ext = url.pathExtension.lowercased()
-        return ["mp4", "mov", "m4v", "m3u8"].contains(ext) ? ext : nil
+        return ext == "m3u8" || MediaPolicy.fileExtensions.contains(ext) ? ext : nil
     }
 
     /// Same request the queue makes before a public transfer, surfaced early so the

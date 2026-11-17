@@ -75,16 +75,8 @@ struct OnboardingScreen: View {
     }
 }
 
-enum BrowserSection: String, CaseIterable {
-    case browser = "탐색", library = "저장함", settings = "설정"
-
-    var icon: String {
-        switch self {
-        case .browser: "safari"
-        case .library: "tray.full"
-        case .settings: "gearshape"
-        }
-    }
+private enum BrowserSection: Hashable {
+    case browser, library, settings
 }
 
 struct BrowserRoot: View {
@@ -131,40 +123,25 @@ struct BrowserRoot: View {
                     if authenticating { ProgressView() }
                 }
                 .padding()
+            } else if let playback {
+                OfflinePlayer(item: playback, center: downloads) { self.playback = nil }
             } else {
-                VStack(spacing: 0) {
-                    if let playback {
-                        OfflinePlayer(item: playback, center: downloads) { self.playback = nil }
-                    } else {
-                        Group {
-                            switch section {
-                            case .browser: BrowserScreen(browser: browser, center: downloads)
-                            case .library: LibraryScreen(center: downloads) { playback = $0 }
-                            case .settings:
-                                SettingsScreen(browser: browser, center: downloads, lockEnabled: $lockEnabled,
-                                               erase: { showErase = true })
-                            }
-                        }
-                        .id(transientReset)
-                        Divider()
-                        HStack(spacing: 0) {
-                            ForEach(BrowserSection.allCases, id: \.self) { item in
-                                Button {
-                                    if item != .browser { browser.tab?.view.pauseAllMediaPlayback(completionHandler: nil) }
-                                    section = item
-                                } label: {
-                                    VStack(spacing: 4) {
-                                        Image(systemName: item.icon).font(.title3)
-                                        Text(item.rawValue).font(.caption)
-                                    }
-                                    .frame(maxWidth: .infinity, minHeight: 48)
-                                }
-                                .foregroundStyle(item == section ? Color.accentColor : Color.secondary)
-                                .accessibilityAddTraits(item == section ? .isSelected : [])
-                            }
-                        }
-                        .padding(.top, 4)
-                        .background(.regularMaterial)
+                TabView(selection: $section) {
+                    Tab("탐색", systemImage: "safari", value: BrowserSection.browser) {
+                        BrowserScreen(browser: browser, center: downloads)
+                    }
+                    Tab("저장함", systemImage: "tray.full", value: BrowserSection.library) {
+                        LibraryScreen(center: downloads, isSelected: section == .library) { playback = $0 }
+                    }
+                    Tab("설정", systemImage: "gearshape", value: BrowserSection.settings) {
+                        SettingsScreen(browser: browser, center: downloads, lockEnabled: $lockEnabled,
+                                       erase: { showErase = true })
+                    }
+                }
+                .id(transientReset)
+                .onChange(of: section) { previous, current in
+                    if previous == .browser && current != .browser {
+                        browser.tab?.view.pauseAllMediaPlayback(completionHandler: nil)
                     }
                 }
             }
@@ -205,7 +182,7 @@ struct BrowserRoot: View {
                                                        set: { if !$0 { downloads.notice = nil } })) {
             Button("확인", role: .cancel) { downloads.notice = nil }
         } message: { Text(downloads.notice ?? "") }
-        .confirmationDialog("이 영상을 비공개로 저장할까요?", isPresented: Binding(
+        .confirmationDialog("이 파일을 비공개로 저장할까요?", isPresented: Binding(
             get: { downloads.webOffer != nil && !locked },
             set: { value in
                 if !value {
@@ -218,7 +195,7 @@ struct BrowserRoot: View {
             Button("저장") { downloads.answerWebOffer(save: true) }
             Button("취소", role: .cancel) { downloads.answerWebOffer(save: false) }
         } message: {
-            Text("출처: \(downloads.webOfferHost ?? "알 수 없음")\n파일: \(downloads.webOfferDetails ?? "알 수 없음")\n저장 위치: 앱 내 보호 저장소(iCloud 백업 제외). 앱을 화면에 둔 상태에서만 진행됩니다.\n저장한 영상은 세션을 닫은 뒤에도 기기에 남습니다.")
+            Text("출처: \(downloads.webOfferHost ?? "알 수 없음")\n파일: \(downloads.webOfferDetails ?? "알 수 없음")\n저장 위치: 앱 내 보호 저장소. 앱을 화면에 둔 상태에서만 진행됩니다.\n저장한 파일은 세션을 닫은 뒤에도 기기에 남습니다.")
         }
         .confirmationDialog("이 기기의 Stream Browser 데이터를 삭제할까요?", isPresented: $showErase, titleVisibility: .visible) {
             Button("앱 데이터 삭제", role: .destructive) {

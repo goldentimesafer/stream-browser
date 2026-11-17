@@ -14,10 +14,10 @@ permissions:
 
 jobs:
   capture:
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     timeout-minutes: 30
     env:
-      DEVELOPER_DIR: /Applications/Xcode_16.4.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -26,8 +26,8 @@ jobs:
         run: |
           mkdir -p build
           simulator=$(xcrun simctl list devices available --json | jq -er '
-            .devices["com.apple.CoreSimulator.SimRuntime.iOS-18-5"]
-            | map(select(.name == "iPhone 16")) | first | .udid
+            .devices["com.apple.CoreSimulator.SimRuntime.iOS-26-5"]
+            | map(select(.name == "iPhone 17")) | first | .udid
           ')
           xcrun simctl boot "$simulator"
           echo "SCREEN_SIMULATOR=$simulator" >> "$GITHUB_ENV"
@@ -56,8 +56,14 @@ jobs:
         run: |
           mkdir -p build/screenshots
           xcrun simctl bootstatus "$SCREEN_SIMULATOR" -b
+          bundle=local.streambrowser.ios
           xcrun simctl install "$SCREEN_SIMULATOR" build/SimulatorBuild/Build/Products/Debug-iphonesimulator/StreamBrowser.app
-          xcrun simctl launch "$SCREEN_SIMULATOR" local.streambrowser.ios
+          container=$(xcrun simctl get_app_container "$SCREEN_SIMULATOR" "$bundle" data)
+          library="$container/Library/Application Support/StreamBrowser"
+          mkdir -p "$library/Media"
+          cp Tests/Fixtures/Library/library.json "$library/library.json"
+          cp Tests/Fixtures/Library/*.mp4 Tests/Fixtures/Library/*.m4a "$library/Media/"
+          xcrun simctl launch "$SCREEN_SIMULATOR" "$bundle"
           sleep 8
           xcrun simctl io "$SCREEN_SIMULATOR" screenshot build/screenshots/startup.png
           xcrun simctl terminate "$SCREEN_SIMULATOR" local.streambrowser.ios || true

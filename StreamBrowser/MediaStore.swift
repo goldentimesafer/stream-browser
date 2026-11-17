@@ -206,8 +206,9 @@ struct MediaStore {
                 guard try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true,
                       let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
                       !restored.media.contains(where: { $0.id == id }) else { continue }
-                restored.media.append(SavedMedia(id: id, kind: .file, location: try reference(url),
-                                                name: "복구한 영상", bytes: try diskUsage(url), date: Date(), position: nil))
+                let kind: MediaKind = MediaPolicy.audioExtensions.contains(url.pathExtension.lowercased()) ? .audio : .file
+                restored.media.append(SavedMedia(id: id, kind: kind, location: try reference(url),
+                                                name: "복구한 미디어", bytes: try diskUsage(url), date: Date(), position: nil))
             }
         }
         // The caller replays pending imports after restoring this index.
@@ -273,7 +274,7 @@ struct MediaStore {
     }
 
     func export(_ item: SavedMedia) throws -> URL {
-        guard item.kind == .file else { throw MediaError.format }
+        guard item.kind != .hls else { throw MediaError.format }
         let original = try resolve(item.location)
         try reserve(bytes: item.bytes)
         let folder = exports.appendingPathComponent(UUID().uuidString, isDirectory: true)
