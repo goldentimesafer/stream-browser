@@ -272,7 +272,7 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
            http.value(forHTTPHeaderField: "Content-Disposition")?.lowercased().hasPrefix("attachment") == true {
             let id = tabs.first(where: { $0.view === webView })?.id
             let userURL = id.flatMap { allowedDownloadNavigation[$0] }
-            let permitted = navigation.isForMainFrame && userURL == response.url && MediaPolicy.videoExtension(response) != nil
+            let permitted = navigation.isForMainFrame && userURL == response.url && MediaPolicy.mediaExtension(response) != nil
             decisionHandler(permitted ? .download : .cancel)
             return
         }
@@ -346,7 +346,7 @@ final class PrivateBrowser: NSObject, ObservableObject, WKNavigationDelegate, WK
             if (!value) continue;
             try {
                 const url = new URL(value, document.baseURI);
-                if (node.tagName !== 'A' || /\\.(mp4|mov|m4v|m3u8)$/i.test(url.pathname)) urls.push(url.href);
+                if (node.tagName !== 'A' || /\\.(mp4|mov|m4v|m3u8|m4a|mp3)$/i.test(url.pathname)) urls.push(url.href);
             } catch (_) {}
         }
         return urls;

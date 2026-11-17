@@ -20,6 +20,21 @@ struct MediaPolicyChecks {
         precondition(MediaError.classify(URLError(.notConnectedToInternet)) == .offline)
         precondition(MediaError.classify(URLError(.serverCertificateUntrusted)) == .certificate)
 
+        let noExtension = URL(string: "https://video.example.org/download")!
+        let rangedMovie = HTTPURLResponse(url: noExtension, statusCode: 206, httpVersion: "HTTP/1.1",
+                                          headerFields: ["Content-Type": "video/quicktime",
+                                                         "Content-Range": "bytes 0-0/28000", "Content-Length": "1"])!
+        precondition(MediaPolicy.mediaExtension(rangedMovie) == "mov")
+        precondition(MediaPolicy.responseByteCount(rangedMovie) == 28000)
+        let unknownSize = HTTPURLResponse(url: noExtension, statusCode: 206, httpVersion: "HTTP/1.1",
+                                          headerFields: ["Content-Range": "bytes 0-0/*", "Content-Length": "1"])!
+        precondition(MediaPolicy.responseByteCount(unknownSize) == nil)
+        let audio = HTTPURLResponse(url: noExtension, statusCode: 200, httpVersion: "HTTP/1.1",
+                                    headerFields: ["Content-Type": "audio/mpeg"])!
+        precondition(MediaPolicy.mediaExtension(audio) == "mp3")
+        precondition(MediaPolicy.hasSupportedFileHeader(Data([0x49, 0x44, 0x33, 0x04]), fileExtension: "mp3"))
+        precondition(!MediaPolicy.hasSupportedFileHeader(Data("<html>Denied</html>".utf8), fileExtension: "mp3"))
+
         let master = try HLSManifest("""
             #EXTM3U
             #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="Main, English",URI="https://cdn.example.org/audio.m3u8"

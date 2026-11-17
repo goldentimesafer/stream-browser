@@ -54,6 +54,8 @@ final class DownloadCenter: ObservableObject {
     @Published private(set) var webOffer: UUID?
     /// Host of the pending web save, shown in the confirmation so the user can see which site is downloading.
     var webOfferHost: String? { webOffer.flatMap { requests[$0]?.host } }
+    /// File name, format and size of the pending web save, from the server response.
+    @Published private(set) var webOfferDetails: String?
     @Published private(set) var libraryRecoveryRequired = false
     @Published private(set) var isErasing = false
     /// Recent download failures (code and mode only), newest first.
@@ -280,7 +282,7 @@ final class DownloadCenter: ObservableObject {
         let id = UUID()
         requests[id] = url
         rows.insert(DownloadRow(id: id, mode: .web, name: "영상"), at: 0)
-        attachWebDownload(download, id: id, expected: url, requiresConfirmation: true)
+        attachWebDownload(download, id: id, expected: url)
     }
 
     private var activeCount: Int { systemTasks.count + webTransfers.count + startingWeb.count + checks.count }
@@ -299,7 +301,7 @@ final class DownloadCenter: ObservableObject {
                 update(id) { $0.state = .checkingSource }
                 checks[id] = Task {
                     do {
-                        let expectedBytes = try await PublicSourceCheck.verify(url, mode: mode, hosts: hosts)
+                        let info = try await PublicSourceCheck.verify(url, mode: mode, hosts: hosts)
                         let configuration: AVAssetDownloadConfiguration?
                         if mode == .hls { configuration = try await (hlsOptions[id] ?? HLSDownloadOptions()).configuration(for: url) }
                         else { configuration = nil }
@@ -308,7 +310,7 @@ final class DownloadCenter: ObservableObject {
                         guard requests[id] != nil else { return }
                         guard foreground, unlocked else { update(id) { $0.state = .queued }; return }
                         guard library.publicHosts == hosts else { fail(id, .untrustedSource); return }
-                        try startSystem(id, url: url, mode: mode, expectedBytes: expectedBytes, configuration: configuration)
+                        try startSystem(id, url: url, mode: mode, expectedBytes: info.byteCount, configuration: configuration)
                     } catch is CancellationError { }
                     catch {
                         checks[id] = nil
@@ -346,7 +348,7 @@ final class DownloadCenter: ObservableObject {
             guard var job = jobs[id], !job.cancelled, job.mode == .backgroundFile, job.location == nil else { return }
             if let response = task.response as? HTTPURLResponse, let error = MediaError.httpStatus(response.statusCode) { throw error }
             guard let response = task.response as? HTTPURLResponse, response.statusCode == 200,
-                  response.url == task.originalRequest?.url, let ext = MediaPolicy.videoExtension(response) else {
+                  response.url == task.originalRequest?.url, let ext = MediaPolicy.mediaExtension(response) else {
                 throw MediaError.response
             }
             let location = try store.takeBackgroundFile(temporary, id: id, ext: ext)
@@ -463,25 +465,34 @@ final class DownloadCenter: ObservableObject {
         DownloadRules.canPause(hasTask: systemTasks[id] != nil, job: jobs[id])
     }
 
-    private func attachWebDownload(_ download: WKDownload, id: UUID, expected: URL, requiresConfirmation: Bool = false) {
+    private func attachWebDownload(_ download: WKDownload, id: UUID, expected: URL) {
         startingWeb.remove(id)
         guard unlocked, foreground, requests[id] != nil else { download.cancel { _ in }; pump(); return }
-        let transfer = WebTransfer(download: download, id: id, expected: expected, requiresConfirmation: requiresConfirmation, center: self)
+        let transfer = WebTransfer(download: download, id: id, expected: expected, center: self)
         webTransfers[id] = transfer
         download.delegate = transfer
         startMonitoring()
     }
 
-    func offerWebSave(_ id: UUID) -> Bool {
+    func offerWebSave(_ id: UUID, response: URLResponse, suggested: String) -> Bool {
         guard webOffer == nil, unlocked, foreground, requests[id] != nil else { return false }
         webOffer = id
+        webOfferDetails = Self.fileSummary(name: suggested, ext: MediaPolicy.mediaExtension(response, suggested: suggested),
+                                           bytes: response.expectedContentLength)
         update(id) { $0.state = .awaitingImport }
         return true
+    }
+
+    /// "name · MP4 · 128 MB" for confirmation screens; unknown parts say so instead of guessing.
+    static func fileSummary(name: String, ext: String?, bytes: Int64?) -> String {
+        let size = (bytes ?? -1) > 0 ? ByteCountFormatter.string(fromByteCount: bytes!, countStyle: .file) : "크기 알 수 없음"
+        return "\(MediaPolicy.displayName((name as NSString).deletingPathExtension)) · \(ext?.uppercased() ?? "형식 미확인") · \(size)"
     }
 
     func answerWebOffer(save: Bool) {
         guard let id = webOffer else { return }
         webOffer = nil
+        webOfferDetails = nil
         if save { webTransfers[id]?.approve() } else { cancel(id) }
     }
 
@@ -489,7 +500,7 @@ final class DownloadCenter: ObservableObject {
         if let response = response as? HTTPURLResponse, let error = MediaError.httpStatus(response.statusCode) { throw error }
         guard unlocked, foreground, requests[id] != nil,
               let http = response as? HTTPURLResponse, http.statusCode == 200,
-              let ext = MediaPolicy.videoExtension(response, suggested: suggested) else { throw MediaError.format }
+              let ext = MediaPolicy.mediaExtension(response, suggested: suggested) else { throw MediaError.format }
         try store.reserve(bytes: response.expectedContentLength > 0 ? response.expectedContentLength : nil)
         let name = MediaPolicy.displayName((suggested as NSString).deletingPathExtension)
         update(id) { $0.name = name; $0.state = .downloading }
@@ -536,14 +547,24 @@ final class DownloadCenter: ObservableObject {
             defer { validations[id] = nil }
             do {
                 let asset = LocalMediaAsset.make(location, kind: mode.kind)
+                let kind: MediaKind
                 if mode == .hls {
                     guard asset.assetCache?.isPlayableOffline == true else { throw MediaError.format }
+                    kind = .hls
                 } else {
+                    let ext = location.pathExtension.lowercased()
                     let handle = try FileHandle(forReadingFrom: location)
                     defer { try? handle.close() }
-                    guard MediaPolicy.hasMovieHeader(try handle.read(upToCount: 16) ?? Data()),
-                          try await asset.load(.isPlayable),
-                          !(try await asset.loadTracks(withMediaType: .video)).isEmpty else { throw MediaError.format }
+                    guard MediaPolicy.hasSupportedFileHeader(try handle.read(upToCount: 16) ?? Data(), fileExtension: ext),
+                          try await asset.load(.isPlayable) else { throw MediaError.format }
+                    let hasVideo = !(try await asset.loadTracks(withMediaType: .video)).isEmpty
+                    if MediaPolicy.audioExtensions.contains(ext) {
+                        guard !hasVideo, !(try await asset.loadTracks(withMediaType: .audio)).isEmpty else { throw MediaError.format }
+                        kind = .audio
+                    } else {
+                        guard hasVideo else { throw MediaError.format }
+                        kind = .file
+                    }
                 }
                 try Task.checkCancellation()
                 guard unlocked, foreground else {
@@ -551,7 +572,7 @@ final class DownloadCenter: ObservableObject {
                     else { try? store.remove(location); fail(id, .interrupted) }
                     return
                 }
-                let pending = try store.prepareImport(location, id: id, kind: mode.kind, name: name)
+                let pending = try store.prepareImport(location, id: id, kind: kind, name: name)
                 library = try store.finishImport(pending, library: library)
                 if mode.usesSystemSession { try? changeJob(id, to: nil) }
                 requests[id] = nil
@@ -755,25 +776,43 @@ private final class WebTransfer: NSObject, WKDownloadDelegate {
     let download: WKDownload
     let id: UUID
     let expected: URL
-    let requiresConfirmation: Bool
     weak var center: DownloadCenter?
     private var location: URL?
     private var proposedDestination: ((Bool) -> Void)?
 
-    init(download: WKDownload, id: UUID, expected: URL, requiresConfirmation: Bool, center: DownloadCenter) {
+    init(download: WKDownload, id: UUID, expected: URL, center: DownloadCenter) {
         self.download = download; self.id = id; self.expected = expected
-        self.requiresConfirmation = requiresConfirmation; self.center = center
+        self.center = center
     }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse,
                   suggestedFilename: String, completionHandler: @escaping @MainActor @Sendable (URL?) -> Void) {
-        if requiresConfirmation {
-            guard center?.offerWebSave(id) == true else { completionHandler(nil); center?.webFailed(id, location: nil, error: .busy); return }
-            proposedDestination = { [weak self] approved in
-                guard approved, let self else { completionHandler(nil); return }
-                self.chooseDestination(response, suggestedFilename, completionHandler)
-            }
-        } else { chooseDestination(response, suggestedFilename, completionHandler) }
+        guard let actual = response.url, sameOrigin(actual) else {
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: .redirect)
+            return
+        }
+        if let http = response as? HTTPURLResponse, let error = MediaError.httpStatus(http.statusCode) {
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: error)
+            return
+        }
+        guard (response as? HTTPURLResponse)?.statusCode == 200,
+              MediaPolicy.mediaExtension(response, suggested: suggestedFilename) != nil else {
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: .format)
+            return
+        }
+        proposedDestination = { [weak self] approved in
+            guard approved, let self else { completionHandler(nil); return }
+            self.chooseDestination(response, suggestedFilename, completionHandler)
+        }
+        guard center?.offerWebSave(id, response: response, suggested: suggestedFilename) == true else {
+            proposedDestination = nil
+            completionHandler(nil)
+            center?.webFailed(id, location: nil, error: .busy)
+            return
+        }
     }
 
     private func chooseDestination(_ response: URLResponse, _ suggestedFilename: String, _ complete: (URL?) -> Void) {

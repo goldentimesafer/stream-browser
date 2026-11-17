@@ -7,12 +7,12 @@ iPhone용 비공개 브라우저 소스입니다. 비공개 웹 탭, 직접 영�
 - **대상 기기**는 iOS 18 이상입니다. SwiftUI, WebKit, Foundation, AVFoundation·AVKit, Photos와 LocalAuthentication을 사용합니다.
 - **macOS**에서 `StreamBrowser.xcodeproj`를 열고 `StreamBrowser` 스킴을 선택합니다. Xcode로 기기에 직접 실행하려면 Signing & Capabilities에서 본인 팀을 지정합니다.
 - **Windows**에서 준비한 이 프로젝트를 macOS 빌드 환경에서 `bash scripts/build-ios.sh`로 빌드할 수 있습니다. 결과는 `build/StreamBrowser-unsigned.ipa`입니다. 개인 설치 도구로 재서명한 뒤 iPhone에서 설치·실행을 확인합니다.
-- GitHub에 이 소스를 올려 사용한다면 Actions의 **iPhone build → Run workflow**에서 수동으로 빌드합니다. 결과물은 `StreamBrowser-unsigned` 아티팩트에 있습니다. 워크플로는 서명 자격 증명이나 Apple 계정 비밀번호를 요구하지 않습니다. [GitHub 실행 환경](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+- GitHub에서 개인 설치용으로 빌드하려면 Actions의 **iPhone build → Run workflow**에서 사용할 브랜치를 선택합니다. `StreamBrowser-unsigned-workflow_dispatch-<커밋>` 아티팩트에는 IPA, SHA-256, 빌드 커밋 정보가 들어 있습니다. PR 검사용 결과물의 이름에는 `pull_request`가 표시됩니다. 워크플로는 서명 자격 증명이나 Apple 계정 비밀번호를 요구하지 않습니다. [GitHub 실행 환경](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 - 개인 설치와 갱신 절차는 [Windows + iPhone 개인 설치 명세](docs/Stream-Browser-개인설치-변경명세-v1.1.md)를 참고합니다.
 
 ## 첫 실행과 영상 저장
 
-1. iPhone의 Face ID 또는 기기 암호로 앱 잠금을 해제합니다.
+1. 첫 실행에서는 시작 안내 화면이 비공개 세션·저장 영상 보관·앱 잠금을 설명합니다. 앱 잠금이 켜져 있으면 Face ID 또는 기기 암호로 인증합니다. 잠금 설정은 앱에 들어간 뒤 변경할 수 있습니다. 주소창에 두 글자 이상 입력하면 북마크에서만 자동완성을 제안합니다.
 2. 탐색에서 주소를 열거나 아래쪽 **영상 저장** 버튼으로 직접 HTTPS 영상 주소를 입력합니다.
 3. **비공개 전경 저장**은 WebKit을 사용합니다. 백그라운드 파일과 HLS를 저장하려면 먼저 **설정 → 공개 다운로드 출처**에서 직접 관리하거나 신뢰하는 공개 호스트를 등록합니다. HLS가 별도 CDN의 목록이나 세그먼트를 사용하면 해당 호스트도 등록합니다.
 4. 저장 방식과 권한 확인을 선택하고 **저장 시작**을 누릅니다. 공개 시스템 전송은 셀룰러 데이터를 사용하지 않으며, iOS가 시작 시점을 조정할 수 있습니다. 강제 종료 후에는 앱을 다시 열어 작업 상태를 확인합니다.
